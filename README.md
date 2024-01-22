@@ -13,6 +13,8 @@ The casm-map package provides pure Python tools for structure mapping and import
 
 This package makes extensive use of lower-level methods which are implemented in [`libcasm-xtal`](https://github.com/prisms-center/CASMcode_crystallography), [`libcasm-mapping`](https://github.com/prisms-center/CASMcode_mapping), and [`libcasm-configuration`](https://github.com/prisms-center/CASMcode_configuration). 
 
+Methods for searching for low-cost lattice, atom, and structure mappings, taking into account symmetry are based on the approach described in the paper `Thomas, Natarajan, and Van der Ven, npj Computational Materials, 7 (2021), 164 <https://doi.org/10.1038/s41524-021-00627-0>`_.
+
 
 #### Install
 
