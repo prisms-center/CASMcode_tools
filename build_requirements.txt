@@ -1,0 +1,5 @@
+pip
+setuptools>=42
+libcasm-xtal>=2.0a8
+libcasm-mapping>=2.0a2
+libcasm-configuration>=2.0a2
