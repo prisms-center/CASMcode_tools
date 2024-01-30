@@ -1,5 +1,5 @@
 def main():
-    print("equiv")
+    print("interp")
 
 
 if __name__ == "__main__":
