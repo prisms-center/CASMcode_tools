@@ -2,6 +2,7 @@
 This is the casm-map interactive mapping script.
 """
 import argparse
+import sys
 from pathlib import Path
 
 import casm.map.utils as utils
@@ -23,14 +24,13 @@ def run_search(args):
     utils.write_maps(maps, parent, child)
 
 
-def run():
-    """Run the interactive tool."""
+def parse_args(args):
     parser = argparse.ArgumentParser(
         description="Interface to libcasm.mapping utilities."
     )
-    parser.add_argument(
-        "--verbose", action="store_true", help="verbose output for debugging"
-    )
+    # parser.add_argument(
+    #     "--verbose", action="store_true", help="verbose output for debugging"
+    # )
 
     # choose method
     method = parser.add_subparsers(title="Select which method to use")
@@ -90,12 +90,11 @@ def run():
     )
 
     # parse
-    args = parser.parse_args()
-    return args
+    return parser.parse_args(args)
 
 
 def main():
-    args = run()
+    args = parse_args(sys.argv[1:])
     args.func(args)
 
 
