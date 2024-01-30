@@ -8,7 +8,12 @@ project_desc = "CASM Python tools for structure mapping and import"
 logo_text = "casm-map"
 github_url = "https://github.com/prisms-center/casm_map/"
 pypi_url = "https://pypi.org/project/casm-map/"
-intersphinx_libcasm_packages = [("global", "2.0"), ("xtal", "2.0"), ("mapping", "2.0"), ("configuration", "2.0")]
+intersphinx_libcasm_packages = [
+    ("global", "2.0"),
+    ("xtal", "2.0"),
+    ("mapping", "2.0"),
+    ("configuration", "2.0"),
+]
 
 
 # -- CASM common configuration ---
