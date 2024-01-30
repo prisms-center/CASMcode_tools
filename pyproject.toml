@@ -28,6 +28,10 @@ dependencies = [
     "numpy",
 ]
 
+[project.optional-dependencies]
+ase = ["ase"]
+pymatgen = ["pymatgen"]
+
 [project.urls]
 Homepage = "https://prisms-center.github.io/CASMcode_docs/"
 Repository = "https://github.com/prisms-center/casm_map"
@@ -39,7 +43,6 @@ casm-map = "casm.map.commands.main:main"
 source-dir = "doc"
 build-dir  = "doc/build"
 all_files  = 1
-
 
 [tool.ruff]
 select = ["E", "F", "I"]
