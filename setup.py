@@ -6,5 +6,5 @@ from setuptools import setup
 setup(
     name="casm-map",
     version=__version__,
-    packages=["casm", "casm.map"],
+    packages=["casm", "casm.map", "casm.map.commands"]
 )

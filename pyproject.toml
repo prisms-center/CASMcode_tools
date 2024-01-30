@@ -32,6 +32,9 @@ dependencies = [
 Homepage = "https://prisms-center.github.io/CASMcode_docs/"
 Repository = "https://github.com/prisms-center/casm_map"
 
+[project.scripts]
+casm-map = "casm.map.commands.main:main"
+
 [build_sphinx]
 source-dir = "doc"
 build-dir  = "doc/build"
