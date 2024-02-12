@@ -48,8 +48,12 @@ def parse_args(args):
     # arguments for each method
     ## search
     search_method.set_defaults(func=run_search)
-    search_method.add_argument("parent", help="path to the parent crystal structure")
-    search_method.add_argument("child", help="path to the child crystal structure")
+    search_method.add_argument(
+        "parent", type=Path, help="path to the parent crystal structure"
+    )
+    search_method.add_argument(
+        "child", type=Path, help="path to the child crystal structure"
+    )
     search_method.add_argument(
         "--symmetrize",
         choices=["parent", "child", "both"],

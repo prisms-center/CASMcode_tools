@@ -1,37 +1,33 @@
 import json
 
 import libcasm.xtal as xtal
-from pymatgen.core import Structure
-from pymatgen.symmetry.analyzer import SpacegroupAnalyzer
 
 
 # helper functions
 ## it is a bit confusing about which structure is actually being used with primify/symmetrize
 def read_prim(prim_path, primify=False, symmetrize=False):
-    p = Structure.from_file(prim_path)  # does not work for CASM prim
     if symmetrize:
-        sg = SpacegroupAnalyzer(p)
-        p = sg.get_refined_structure()
-    prim = xtal.Prim.from_poscar_str(p.to(fmt="poscar"))
+        raise NotImplementedError("symmetrize prim not implemented")
+    if prim_path.suffix == ".json":
+        with open(prim_path, "r") as f:
+            prim = xtal.Prim.from_dict(json.load(f))
+    else:
+        prim = xtal.Prim.from_poscar(prim_path.as_posix())
     if primify:
-        prim = xtal.make_primitive(
-            prim
-        )  # removes occ_dof (add example to libcasm.xtal) (done)
+        prim = xtal.make_primitive(prim)
     return prim
 
 
 ## add make_primitive for structures to xtal package? (already exists?)
 ## no title in Structure for POSCAR output?
 def read_structure(structure_path, primify=False, symmetrize=False):
-    prim = read_prim(structure_path, primify, symmetrize)
-    structure = xtal.Structure.from_dict(
-        {
-            "atom_coords": prim.coordinate_frac().T.tolist(),
-            "atom_type": [i[0] for i in prim.occ_dof()],
-            "coordinate_mode": "Fractional",
-            "lattice_vectors": prim.lattice().column_vector_matrix().tolist(),
-        }
-    )
+    if symmetrize:
+        raise NotImplementedError("symmetrize structure not implemented")
+    if primify:
+        raise NotImplementedError("primify structure not implemented")
+    if structure_path.suffix == ".json":
+        raise NotImplementedError("prim.json format not supported structure")
+    structure = xtal.Structure.from_poscar(structure_path.as_posix())
     return structure
 
 
