@@ -19,9 +19,14 @@ def run_search(args):
     elif not child_path.is_file():
         print(f"missing child at: {child_path}")
         return
+    additional_data = []
     maps, parent, child = search.search(args)
     print(f"found {len(maps)} maps")
-    utils.write_maps(maps, parent, child)
+    if args.high_symmetry_strain:
+        for m in maps:
+            high_symmetry_strain = utils.strain_from_lattice_mapping(m.lattice_mapping())
+            additional_data.append({'high_symmetry_strain': high_symmetry_strain.tolist()})
+    utils.write_maps(maps, parent, child, additional_data)
 
 
 def parse_args(args):
@@ -91,6 +96,11 @@ def parse_args(args):
         "--mask-occupants",
         action="store_true",
         help="treat all atoms as if they were the same species",
+    )
+    search_method.add_argument(
+        "--high-symmetry-strain",
+        action="store_true",
+        help="write high symmetry Hencky strain vector into mapping results"
     )
 
     # parse
