@@ -1,10 +1,9 @@
+"""Helper functions for the mapping tool."""
 import json
 
 import libcasm.xtal as xtal
 
 
-# helper functions
-## it is a bit confusing about which structure is actually being used with primify/symmetrize
 def read_prim(prim_path, primify=False, symmetrize=False):
     if symmetrize:
         raise NotImplementedError("symmetrize prim not implemented")
@@ -18,16 +17,14 @@ def read_prim(prim_path, primify=False, symmetrize=False):
     return prim
 
 
-## add make_primitive for structures to xtal package? (already exists?)
-## no title in Structure for POSCAR output?
 def read_structure(structure_path, primify=False, symmetrize=False):
     if symmetrize:
         raise NotImplementedError("symmetrize structure not implemented")
-    if primify:
-        raise NotImplementedError("primify structure not implemented")
     if structure_path.suffix == ".json":
         raise NotImplementedError("prim.json format not supported structure")
     structure = xtal.Structure.from_poscar(structure_path.as_posix())
+    if primify:
+        structure = xtal.make_primitive(structure)
     return structure
 
 
