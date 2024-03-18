@@ -36,17 +36,13 @@ def search(args):
     """
     # read parent and child
     primify_parent = "parent" in args.primify or "both" in args.primify
-    symmetrize_parent = "parent" in args.symmetrize or "both" in args.symmetrize
+    # symmetrize_parent = "parent" in args.symmetrize or "both" in args.symmetrize
     primify_child = "child" in args.primify or "both" in args.primify
-    symmetrize_child = "child" in args.symmetrize or "both" in args.symmetrize
+    # symmetrize_child = "child" in args.symmetrize or "both" in args.symmetrize
     print(f"reading parent: {args.parent}, primify: {primify_parent}")
-    parent = utils.read_prim(
-        args.parent, primify=primify_parent, symmetrize=symmetrize_child
-    )
+    parent = utils.read_prim(args.parent, primify=primify_parent, symmetrize=False)
     print(f"reading child: {args.child}, primify: {primify_child}")
-    child = utils.read_structure(
-        args.child, primify=primify_child, symmetrize=symmetrize_child
-    )
+    child = utils.read_structure(args.child, primify=primify_child, symmetrize=False)
 
     # should come before include_vacancies
     if args.mask_occupants:
@@ -61,8 +57,8 @@ def search(args):
         child = xtal.Structure.from_dict(child_dict)
 
     # get max volume for parent
-    if args.include_vacancies:
-        raise NotImplementedError
+    # if args.include_vacancies:
+    #     raise NotImplementedError
     if args.child_supercells:
         raise NotImplementedError
     if args.max_vol is None:
@@ -86,8 +82,8 @@ def search(args):
         max_vol = args.max_vol
 
     # make factor groups
-    if len(args.symmetrize_if_necessary) != 0:
-        raise NotImplementedError
+    # if len(args.symmetrize_if_necessary) != 0:
+    #     raise NotImplementedError
     prim_factor_group = xtal.make_factor_group(parent)
     structure_factor_group = xtal.make_factor_group(child)
 

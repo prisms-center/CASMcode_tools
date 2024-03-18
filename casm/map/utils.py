@@ -44,7 +44,7 @@ def write_maps(maps, parent, child, additional_data=[]):
         data = {
             "map": m.to_dict(),
             "parent": parent.to_dict(),
-            "child": child.to_dict(),                    
+            "child": child.to_dict(),
         }
         # add any additional data to the output file
         if len(additional_data) > 0:
@@ -70,8 +70,8 @@ def write_structures(structures, xdatcar=False):
                 f.write(s.to_poscar_str())
 
 
-def strain_from_lattice_mapping(lattice_mapping, strain_metric='Hstrain'):
-    """Given a lattice mapping, return the high-symmetry strain values."""
+def strain_from_lattice_mapping(lattice_mapping, strain_metric="Hstrain"):
+    """Given a lattice mapping, return the symmetry adapted strain values."""
     basis = xtal.make_symmetry_adapted_strain_basis()
     converter = xtal.StrainConverter(strain_metric, basis)
     strain_vector = converter.from_F(lattice_mapping.deformation_gradient())
