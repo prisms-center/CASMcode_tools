@@ -44,11 +44,16 @@ def parse_args(args):
     # choose method
     method = parser.add_subparsers(title="Select which method to use")
     deform_method = method.add_parser(
-        "deform", help="apply mapping and construct resulting structure"
+        "deform", help="apply mapping and construct resulting structure",
+        description="Given a map and a structure, apply the deformation in the map."
     )
-    equiv_method = method.add_parser("equiv", help="find equivalent mappings")
+    equiv_method = method.add_parser(
+        "equiv", help="find equivalent mappings",
+        description="Given a map between two structures, find all equivalent child structures."
+    )
     interp_method = method.add_parser(
-        "interp", help="interpolate between two structures"
+        "interp", help="interpolate between two structures",
+        description="Linearly interpolate along a mapping pathway between two structures."
     )
     search_method = method.add_parser(
         "search",
@@ -169,7 +174,10 @@ def parse_args(args):
 
 def main():
     args = parse_args(sys.argv[1:])
-    args.func(args)
+    try:
+        args.func(args)
+    except AttributeError:
+        print("run 'casm-map --help' to print usage information")
 
 
 if __name__ == "__main__":
