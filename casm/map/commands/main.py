@@ -7,6 +7,7 @@ from pathlib import Path
 
 import numpy as np
 import libcasm.mapping.methods as mapmethods
+import libcasm.xtal as xtal
 
 import casm.map.utils as utils
 from casm.map.commands import equiv, interp, search
@@ -61,6 +62,40 @@ def run_interp(args):
             utils.write_structures(structures, p)
 
 
+def run_equiv(args):
+    parent_path = Path(args.parent)
+    child_path = Path(args.child)
+    if not parent_path.is_file():
+        print(f"missing parent at: {parent_path}")
+        return
+    elif not child_path.is_file():
+        print(f"missing child at: {child_path}")
+        return
+    maps, parent, child = search.search(args)
+    unique_structures = equiv.make_unique_mapped_structures(
+        unmapped_structure=child,
+        structure_mappings=maps,
+        prim_factor_group=xtal.make_factor_group(parent),
+    )
+    print(f"unique structures: {len(unique_structures)}")
+    equivalent_mapped_structures = equiv.construct_equivalent_mapped_structures(
+        prototype_structure=unique_structures[0],
+        prim_factor_group=xtal.make_factor_group(parent),
+    )
+    print(f"equivalent mapped structures: {len(equivalent_mapped_structures)}")
+    equivalent_configurations = equiv.construct_equivalent_configurations(
+        prim=parent, prototype_structure=unique_structures[0]
+    )
+    print(f"equivalent configurations: {len(equivalent_configurations)}")
+    p = Path("equiv")
+    if p.exists():
+        print("equiv directory exists")
+        return
+    else:
+        p.mkdir()
+        utils.write_structures([i.to_structure() for i in equivalent_configurations], p)
+
+
 def parse_args(args):
     parser = argparse.ArgumentParser(
         description="Interface to libcasm.mapping utilities."
@@ -79,7 +114,7 @@ def parse_args(args):
     equiv_method = method.add_parser(
         "equiv",
         help="find equivalent mappings",
-        description="Given a map between two structures, find all equivalent child structures.",
+        description="Map a child structure onto a parent and find all equivalent children.",
     )
     interp_method = method.add_parser(
         "interp",
@@ -93,6 +128,34 @@ def parse_args(args):
     )
 
     # arguments for each method
+    ## equiv
+    equiv_method.set_defaults(func=run_equiv)
+    equiv_method.add_argument(
+        "parent",
+        type=Path,
+        help="path to the parent crystal structure (prim.json or POSCAR format)",
+    )
+    equiv_method.add_argument(
+        "child", type=Path, help="path to the child crystal structure (POSCAR format)"
+    )
+    equiv_method.add_argument(
+        "--primify",
+        choices=["parent", "child", "both"],
+        default=[],
+        help="ensure that the structures are primitive",
+    )
+    equiv_method.add_argument(
+        "--max-vol",
+        type=int,
+        default=None,
+        help="maximum volume of the parent (after primifying if selected)",
+    )
+    equiv_method.add_argument(
+        "--mask-occupants",
+        action="store_true",
+        help="treat all atoms as if they were the same species",
+    )
+
     ## interpolate
     interp_method.set_defaults(func=run_interp)
     interp_method.add_argument(
