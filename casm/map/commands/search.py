@@ -59,8 +59,8 @@ def search(args):
     # get max volume for parent
     # if args.include_vacancies:
     #     raise NotImplementedError
-    if args.child_supercells:
-        raise NotImplementedError
+    # if args.child_supercells:
+    #     raise NotImplementedError
     if args.max_vol is None:
         parent_natoms = parent.coordinate_cart().shape[1]
         child_natoms = len(child.atom_type())
