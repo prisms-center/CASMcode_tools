@@ -1,5 +1,6 @@
 """Helper functions for the mapping tool."""
 import json
+from pathlib import Path
 
 import libcasm.xtal as xtal
 
@@ -52,18 +53,19 @@ def write_maps(maps, parent, child, additional_data=[]):
             json.dump(data, f)
 
 
-def write_structures(structures, xdatcar=False):
+def write_structures(structures, path=".", xdatcar=False):
+    path = Path(path)
     if xdatcar is False:
         for i, s in enumerate(structures):
             print(f"writing structure_{i}")
-            with open(f"structure_{i}.vasp", "w") as f:
+            with open(path / f"structure_{i}.vasp", "w") as f:
                 f.write(s.to_poscar_str())
     else:
         print(
             "writing XDATCAR"
         )  # needs some work, not sure if actual xdatcar format+appends to existing
         for i, s in enumerate(structures):
-            with open(f"XDATCAR", "a") as f:
+            with open(path / f"XDATCAR", "a") as f:
                 f.write(s.to_poscar_str())
 
 
