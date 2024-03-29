@@ -5,7 +5,29 @@ from pathlib import Path
 import libcasm.xtal as xtal
 
 
-def read_prim(prim_path, primify=False, symmetrize=False):
+def read_prim(
+    prim_path: Path, primify: bool = False, symmetrize: bool = False
+) -> xtal.Prim:
+    """Read a prim file into an xtal.Prim.
+
+    If a prim.json file is used, all occupational degrees of freedom
+    are preserved. If a POSCAR is used, occupants on each site will
+    be fixed to the species in the POSCAR.
+
+    Parameters
+    ----------
+    prim_path : Path
+        The path to a prim.json or POSCAR.
+    primify : bool, default=False
+        If true, call xtal.make_primitive on the prim.
+    symmetrize : bool, default=False
+        If true, symmetrize the prim.
+
+    Returns
+    --------
+    xtal.Prim
+
+    """
     if symmetrize:
         raise NotImplementedError("symmetrize prim not implemented")
     if prim_path.suffix == ".json":
@@ -18,11 +40,30 @@ def read_prim(prim_path, primify=False, symmetrize=False):
     return prim
 
 
-def read_structure(structure_path, primify=False, symmetrize=False):
+def read_structure(
+    structure_path: Path, primify: bool = False, symmetrize: bool = False
+) -> xtal.Structure:
+    """Read a POSCAR file into an xtal.Structure.
+
+    Parameters
+    ----------
+    structure_path : Path
+        The path to a POSCAR.
+    primify : bool, default=False
+        If true, call xtal.make_primitive on the structure.
+    symmetrize : bool, default=False
+        If true, symmetrize the structure.
+
+    Returns
+    -------
+    xtal.Structure
+
+    """
+
     if symmetrize:
         raise NotImplementedError("symmetrize structure not implemented")
     if structure_path.suffix == ".json":
-        raise NotImplementedError("prim.json format not supported structure")
+        raise NotImplementedError("json format not supported for structures")
     structure = xtal.Structure.from_poscar(structure_path.as_posix())
     if primify:
         structure = xtal.make_primitive(structure)
