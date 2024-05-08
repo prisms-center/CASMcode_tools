@@ -72,28 +72,52 @@ def run_equiv(args):
         print(f"missing child at: {child_path}")
         return
     maps, parent, child = search.search(args)
-    unique_structures = equiv.make_unique_mapped_structures(
-        unmapped_structure=child,
-        structure_mappings=maps,
-        prim_factor_group=xtal.make_factor_group(parent),
-    )
-    print(f"unique structures: {len(unique_structures)}")
-    equivalent_mapped_structures = equiv.construct_equivalent_mapped_structures(
-        prototype_structure=unique_structures[0],
-        prim_factor_group=xtal.make_factor_group(parent),
-    )
-    print(f"equivalent mapped structures: {len(equivalent_mapped_structures)}")
-    equivalent_configurations = equiv.construct_equivalent_configurations(
-        prim=parent, prototype_structure=unique_structures[0]
-    )
-    print(f"equivalent configurations: {len(equivalent_configurations)}")
-    p = Path("equiv")
-    if p.exists():
-        print("equiv directory exists")
+    print(f"maps: {len(maps)}")
+    if len(maps) == 0:
+        print("no deformation pathway found")
         return
+    # check that there is only one unique child structure
+    if len(maps) > 1:
+        mapped_structures = [
+            mapmethods.make_mapped_structure(i.interpolated(1), child) for i in maps
+        ]
+        for m in mapped_structures[1:]:
+            point_group = xtal.make_point_group(parent.lattice())
+            if not equiv.check_equiv(mapped_structures[0], m, point_group):
+                raise ValueError("multiple unique children found!")
+    if not args.interpolate:
+        mapped_child = mapmethods.make_mapped_structure(maps[0].interpolated(1), child)
+        point_group = xtal.make_point_group(parent.lattice())
+        equivalent_structures = equiv.make_equivalent_structures(
+            mapped_child, point_group
+        )
+        print(f"equivalent child structures: {len(equivalent_structures)}")
+        p = Path("equiv")
+        if p.exists():
+            print("equiv directory exists")
+            return
+        else:
+            p.mkdir()
+            utils.write_structures(equivalent_structures, p)
     else:
-        p.mkdir()
-        utils.write_structures([i.to_structure() for i in equivalent_configurations], p)
+        steps = [i / 10 for i in range(0, 11)]
+        path = [
+            mapmethods.make_mapped_structure(maps[0].interpolated(i), child)
+            for i in steps
+        ]
+        point_group = xtal.make_point_group(parent.lattice())
+        equivalent_paths = equiv.make_equivalent_paths(path, point_group)
+        print(f"equivalent paths: {len(equivalent_paths)}")
+        p = Path("equiv")
+        if p.exists():
+            print("equiv directory exists")
+            return
+        else:
+            p.mkdir()
+            for i, v in enumerate(equivalent_paths):
+                path_dir = p / str(i)
+                path_dir.mkdir()
+                utils.write_structures(v, path_dir)
 
 
 def parse_args(args):
@@ -155,6 +179,13 @@ def parse_args(args):
         action="store_true",
         help="treat all atoms as if they were the same species",
     )
+    equiv_method.add_argument(
+        "--interpolate",
+        action="store_true",
+        default=False,
+        help="make equivalent paths instead of equivalent structures",
+    )
+    # todo: add the number of steps
 
     ## interpolate
     interp_method.set_defaults(func=run_interp)
