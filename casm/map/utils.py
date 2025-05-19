@@ -3,7 +3,8 @@ import json
 from pathlib import Path
 
 import libcasm.xtal as xtal
-
+import libcasm.mapping.methods as mapmethods # remove
+import numpy as np
 
 def read_prim(
     prim_path: Path, primify: bool = False, symmetrize: bool = False
@@ -92,6 +93,51 @@ def write_maps(maps, parent, child, additional_data=[]):
                     data[k] = v
         with open(f"map_{i}.json", "w") as f:
             json.dump(data, f)
+
+
+def pretty_print_maps(maps, parent, child, additional_data=[]):
+    """Writes mapping data to text files.
+
+    For each map, the parent and child are also written. Additional
+    data can be added to each map by passing a list of dictionaries,
+    where the index corresponds to the map index. An empty dictionary
+    will be skipped.
+    """
+    for i, m in enumerate(maps):
+        print(f"pretty printing map_{i}")
+        with open(f"map_{i}.out", "w") as f:
+            f.write('mapping scores\n')
+            f.write('--------------\n')
+            f.write(f"atom_cost: {round(m.atom_cost(), 3)}, lattice_cost: {round(m.lattice_cost(), 3)} "
+                    f"total_cost: {round(m.total_cost(), 3)}\n")
+            f.write('\n')
+            f.write('deformation gradient\n')
+            f.write('--------------------\n')
+            f.write(f'{np.round(m.lattice_mapping().deformation_gradient(), 5)}')
+            f.write('\n')
+            f.write('displacements\n')
+            f.write('-------------\n')
+            f.write(f'{np.round(m.atom_mapping().displacement(), 5)}')
+            f.write('\n')
+            f.write('parent\n')
+            f.write('------\n')
+            f.write(parent.to_json())
+            f.write('\n')
+            f.write('child\n')
+            f.write('-----\n')
+            f.write(child.to_poscar_str())
+            f.write('\n')
+            f.write('mapped child\n')
+            f.write('-----\n')
+            mapped_child = mapmethods.make_mapped_structure(m, child)
+            f.write(mapped_child.to_poscar_str())
+            f.write('\n')
+            # just hardcode strain here for the time being
+            if len(additional_data) != 0:
+                f.write('strain\n')
+                f.write('------\n')
+                f.write(f"metric: {list(additional_data[i].keys())[0]}\n")
+                f.write(f"{np.round(list(additional_data[i].values())[0], 3)}\n")
 
 
 def write_structures(structures, path=".", xdatcar=False):
