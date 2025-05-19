@@ -23,17 +23,51 @@ def run_search(args):
         print(f"missing child at: {child_path}")
         return
     additional_data = []
-    maps, parent, child = search.search(args)
+    if args.child_supercells == 1:
+        search_results = search.search(args)
+        if search_results is None:
+            return
+        else:
+            maps, parent, child = search_results
+    else:
+        child = utils.read_structure(args.child)
+        max_supercell = args.child_supercells
+        children_data = []
+        if args.k_best != 1: raise ValueError("k_best must be 1 if child_supercells != 1")
+        unit_lattice = child.lattice()
+        superlattices = xtal.enumerate_superlattices(
+            unit_lattice, xtal.make_point_group(unit_lattice), min_volume=1, max_volume=max_supercell
+        )
+        transformation_matrices = [xtal.make_transformation_matrix_to_super(s, unit_lattice)
+                                   for s in superlattices]
+        children = [xtal.make_superstructure(T, child) for T in transformation_matrices]
+        for child in children:
+            try:
+                maps, parent, child = search.search_tmp(child, args)
+                children_data.append([maps, parent, child])
+            except: continue
+        # rank maps
+        map_scores = [m[0][0].total_cost() for m in children_data]
+        min_map = np.argmin(map_scores)
+        maps, parent, child = children_data[min_map]
+        
     print(f"found {len(maps)} maps")
-    if args.symmetry_adapted_strain:
+    if args.symmetry_adapted_strain is not None:
+        if args.symmetry_adapted_strain in ["GLstrain", "Hstrain", "EAstrain", "Ustrain", "Bstrain"]:
+            strain_metric = args.symmetry_adapted_strain
+        else:
+            raise ValueError(f"strain metric {args.symmetry_adapted_strain} not recognized")
         for m in maps:
             symmetry_adapted_strain = utils.strain_from_lattice_mapping(
-                m.lattice_mapping()
+                m.lattice_mapping(), strain_metric
             )
             additional_data.append(
-                {"symmetry_adapted_strain": symmetry_adapted_strain.tolist()}
+                {strain_metric: symmetry_adapted_strain.tolist()}
             )
     utils.write_maps(maps, parent, child, additional_data)
+    # only put pretty printing in here so that it doesn't mess with the interpolation stuff
+    if args.pretty_print:
+        utils.pretty_print_maps(maps, parent, child, additional_data)
 
 
 def run_interp(args):
@@ -278,12 +312,12 @@ def parse_args(args):
         default=None,
         help="maximum volume of the parent (after primifying if selected)",
     )
-    # search_method.add_argument(
-    #     "--child-supercells",
-    #     type=int,
-    #     default=None,
-    #     help="make supercells of the child up to this size",
-    # )
+    search_method.add_argument(
+        "--child-supercells",
+        type=int,
+        default=1,
+        help="make supercells of the child up to this size",
+    )
     # search_method.add_argument(
     #     "--include-vacancies", action="store_true", help="allow vacancies"
     # )
@@ -294,8 +328,20 @@ def parse_args(args):
     )
     search_method.add_argument(
         "--symmetry-adapted-strain",
+        type=str,
+        default=None,
+        help="write symmetry-adapted strain vector into mapping results",
+    )
+    search_method.add_argument(
+        "--k-best",
+        type=int,
+        default=1,
+        help="return top k maps, default 1 (maps with the same score are not double-counted in k)"
+    )
+    search_method.add_argument(
+        "--pretty-print",
         action="store_true",
-        help="write symmetry-adapted Hencky strain vector into mapping results",
+        help="pretty print mapping results to map_*.out files"
     )
 
     # parse
