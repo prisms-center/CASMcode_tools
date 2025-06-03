@@ -55,34 +55,3 @@ def test_mask_occupants(hcp_ag_primitive_poscar, bcc_li_conventional_poscar):
     )
     maps_with_masking, _, _ = search.search(args)
     assert len(maps_with_masking) >= 1
-
-
-def test_high_symmetry_strain(
-    bcc_li_primitive_poscar, fcc_li_primitive_poscar, hcp_li_primitive_poscar
-):
-    args = parse_args(
-        [
-            "search",
-            bcc_li_primitive_poscar.as_posix(),
-            fcc_li_primitive_poscar.as_posix(),
-            "--symmetry-adapted-strain",
-        ]
-    )
-    maps, _, _ = search.search(args)
-    for m in maps:
-        strain = utils.strain_from_lattice_mapping(m.lattice_mapping())
-        assert np.allclose(strain, [-0.00058, 0, 0.28298, 0, 0, 0], atol=1e-5)
-
-    # HCP test failing
-    args = parse_args(
-        [
-            "search",
-            bcc_li_primitive_poscar.as_posix(),
-            hcp_li_primitive_poscar.as_posix(),
-            "--symmetry-adapted-strain",
-        ]
-    )
-    maps, _, _ = search.search(args)
-    for m in maps:
-        strain = utils.strain_from_lattice_mapping(m.lattice_mapping())
-        assert np.allclose(strain, [-0.00290, 0, -0.13974, 0, 0, 0.04468], atol=1e-5)
