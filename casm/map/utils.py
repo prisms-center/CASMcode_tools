@@ -1,10 +1,13 @@
 """Helper functions for the mapping tool."""
+
 import json
 from pathlib import Path
 
-import libcasm.xtal as xtal
-import libcasm.mapping.methods as mapmethods # remove
 import numpy as np
+
+import libcasm.mapping.methods as mapmethods  # remove
+import libcasm.xtal as xtal
+
 
 def read_prim(
     prim_path: Path, primify: bool = False, symmetrize: bool = False
@@ -106,36 +109,39 @@ def pretty_print_maps(maps, parent, child, additional_data=[]):
     for i, m in enumerate(maps):
         print(f"pretty printing map_{i}")
         with open(f"map_{i}.out", "w") as f:
-            f.write('mapping scores\n')
-            f.write('--------------\n')
-            f.write(f"atom_cost: {round(m.atom_cost(), 3)}, lattice_cost: {round(m.lattice_cost(), 3)} "
-                    f"total_cost: {round(m.total_cost(), 3)}\n")
-            f.write('\n')
-            f.write('deformation gradient\n')
-            f.write('--------------------\n')
-            f.write(f'{np.round(m.lattice_mapping().deformation_gradient(), 5)}')
-            f.write('\n')
-            f.write('displacements\n')
-            f.write('-------------\n')
-            f.write(f'{np.round(m.atom_mapping().displacement(), 5)}')
-            f.write('\n')
-            f.write('parent\n')
-            f.write('------\n')
+            f.write("mapping scores\n")
+            f.write("--------------\n")
+            f.write(
+                f"atom_cost: {round(m.atom_cost(), 3)}, "
+                f"lattice_cost: {round(m.lattice_cost(), 3)} "
+                f"total_cost: {round(m.total_cost(), 3)}\n"
+            )
+            f.write("\n")
+            f.write("deformation gradient\n")
+            f.write("--------------------\n")
+            f.write(f"{np.round(m.lattice_mapping().deformation_gradient(), 5)}")
+            f.write("\n")
+            f.write("displacements\n")
+            f.write("-------------\n")
+            f.write(f"{np.round(m.atom_mapping().displacement(), 5)}")
+            f.write("\n")
+            f.write("parent\n")
+            f.write("------\n")
             f.write(parent.to_json())
-            f.write('\n')
-            f.write('child\n')
-            f.write('-----\n')
+            f.write("\n")
+            f.write("child\n")
+            f.write("-----\n")
             f.write(child.to_poscar_str())
-            f.write('\n')
-            f.write('mapped child\n')
-            f.write('-----\n')
+            f.write("\n")
+            f.write("mapped child\n")
+            f.write("-----\n")
             mapped_child = mapmethods.make_mapped_structure(m, child)
             f.write(mapped_child.to_poscar_str())
-            f.write('\n')
+            f.write("\n")
             # just hardcode strain here for the time being
             if len(additional_data) != 0:
-                f.write('strain\n')
-                f.write('------\n')
+                f.write("strain\n")
+                f.write("------\n")
                 f.write(f"metric: {list(additional_data[i].keys())[0]}\n")
                 f.write(f"{np.round(list(additional_data[i].values())[0], 3)}\n")
 
@@ -152,7 +158,7 @@ def write_structures(structures, path=".", xdatcar=False):
             "writing XDATCAR"
         )  # needs some work, not sure if actual xdatcar format+appends to existing
         for i, s in enumerate(structures):
-            with open(path / f"XDATCAR", "a") as f:
+            with open(path / "XDATCAR", "a") as f:
                 f.write(s.to_poscar_str())
 
 

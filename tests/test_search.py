@@ -1,12 +1,9 @@
-import argparse
 from pathlib import Path
 
 import pytest
-import numpy as np
 
-from casm.map.commands.main import parse_args
 import casm.map.commands.search as search
-import casm.map.utils as utils
+from casm.map.commands.main import parse_args
 
 
 @pytest.fixture

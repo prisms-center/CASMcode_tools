@@ -1,16 +1,17 @@
 """
 This is the casm-map interactive mapping script.
 """
+
 import argparse
 import sys
 from pathlib import Path
 
 import numpy as np
-import libcasm.mapping.methods as mapmethods
-import libcasm.xtal as xtal
 
 import casm.map.utils as utils
-from casm.map.commands import equiv, interp, search
+import libcasm.mapping.methods as mapmethods
+import libcasm.xtal as xtal
+from casm.map.commands import equiv, search
 
 
 def run_search(args):
@@ -33,39 +34,52 @@ def run_search(args):
         child = utils.read_structure(args.child)
         max_supercell = args.child_supercells
         children_data = []
-        if args.k_best != 1: raise ValueError("k_best must be 1 if child_supercells != 1")
+        if args.k_best != 1:
+            raise ValueError("k_best must be 1 if child_supercells != 1")
         unit_lattice = child.lattice()
         superlattices = xtal.enumerate_superlattices(
-            unit_lattice, xtal.make_point_group(unit_lattice), min_volume=1, max_volume=max_supercell
+            unit_lattice,
+            xtal.make_point_group(unit_lattice),
+            min_volume=1,
+            max_volume=max_supercell,
         )
-        transformation_matrices = [xtal.make_transformation_matrix_to_super(s, unit_lattice)
-                                   for s in superlattices]
+        transformation_matrices = [
+            xtal.make_transformation_matrix_to_super(s, unit_lattice)
+            for s in superlattices
+        ]
         children = [xtal.make_superstructure(T, child) for T in transformation_matrices]
         for child in children:
             try:
                 maps, parent, child = search.search_tmp(child, args)
                 children_data.append([maps, parent, child])
-            except: continue
+            except Exception:
+                continue
         # rank maps
         map_scores = [m[0][0].total_cost() for m in children_data]
         min_map = np.argmin(map_scores)
         maps, parent, child = children_data[min_map]
-        
+
     print(f"found {len(maps)} maps")
     if args.symmetry_adapted_strain is not None:
-        if args.symmetry_adapted_strain in ["GLstrain", "Hstrain", "EAstrain", "Ustrain", "Bstrain"]:
+        if args.symmetry_adapted_strain in [
+            "GLstrain",
+            "Hstrain",
+            "EAstrain",
+            "Ustrain",
+            "Bstrain",
+        ]:
             strain_metric = args.symmetry_adapted_strain
         else:
-            raise ValueError(f"strain metric {args.symmetry_adapted_strain} not recognized")
+            raise ValueError(
+                f"strain metric {args.symmetry_adapted_strain} not recognized"
+            )
         for m in maps:
             symmetry_adapted_strain = utils.strain_from_lattice_mapping(
                 m.lattice_mapping(), strain_metric
             )
-            additional_data.append(
-                {strain_metric: symmetry_adapted_strain.tolist()}
-            )
+            additional_data.append({strain_metric: symmetry_adapted_strain.tolist()})
     utils.write_maps(maps, parent, child, additional_data)
-    # only put pretty printing in here so that it doesn't mess with the interpolation stuff
+    # only put pretty printing in here so that it doesn't affect interpolation
     if args.pretty_print:
         utils.pretty_print_maps(maps, parent, child, additional_data)
 
@@ -164,25 +178,32 @@ def parse_args(args):
 
     # choose method
     method = parser.add_subparsers(title="Select which method to use")
-    deform_method = method.add_parser(
-        "deform",
-        help="apply mapping and construct resulting structure",
-        description="Given a map and a structure, apply the deformation in the map.",
-    )
+    # deform_method = method.add_parser(
+    #     "deform",
+    #     help="apply mapping and construct resulting structure",
+    #     description="Given a map and a structure, apply the deformation in the map.",
+    # )
     equiv_method = method.add_parser(
         "equiv",
         help="find equivalent mappings",
-        description="Map a child structure onto a parent and find all equivalent children.",
+        description=(
+            "Map a child structure onto a parent and find all equivalent children."
+        ),
     )
     interp_method = method.add_parser(
         "interp",
         help="interpolate between two structures",
-        description="Linearly interpolate along a mapping pathway between two structures.",
+        description=(
+            "Linearly interpolate along a mapping pathway between two structures."
+        ),
     )
     search_method = method.add_parser(
         "search",
         help="find a mapping between two structures",
-        description="Given a parent and a child structure, find the best mapping from child to parent.",
+        description=(
+            "Given a parent and a child structure, find the best mapping from child to "
+            "parent."
+        ),
     )
 
     # arguments for each method
@@ -194,7 +215,9 @@ def parse_args(args):
         help="path to the parent crystal structure (prim.json or POSCAR format)",
     )
     equiv_method.add_argument(
-        "child", type=Path, help="path to the child crystal structure (POSCAR format)"
+        "child",
+        type=Path,
+        help="path to the child crystal structure (POSCAR format)",
     )
     equiv_method.add_argument(
         "--primify",
@@ -229,10 +252,14 @@ def parse_args(args):
         help="path to the parent crystal structure (prim.json or POSCAR format)",
     )
     interp_method.add_argument(
-        "child", type=Path, help="path to the child crystal structure (POSCAR format)"
+        "child",
+        type=Path,
+        help="path to the child crystal structure (POSCAR format)",
     )
     interp_method.add_argument(
-        "steps", type=int, help="number of interpolation steps (inclusive)"
+        "steps",
+        type=int,
+        help="number of interpolation steps (inclusive)",
     )
     interp_method.add_argument(
         "--xdatcar",
@@ -286,7 +313,9 @@ def parse_args(args):
         help="path to the parent crystal structure (prim.json or POSCAR format)",
     )
     search_method.add_argument(
-        "child", type=Path, help="path to the child crystal structure (POSCAR format)"
+        "child",
+        type=Path,
+        help="path to the child crystal structure (POSCAR format)",
     )
     # search_method.add_argument(
     #     "--symmetrize",
@@ -336,12 +365,15 @@ def parse_args(args):
         "--k-best",
         type=int,
         default=1,
-        help="return top k maps, default 1 (maps with the same score are not double-counted in k)"
+        help=(
+            "return top k maps, default 1 (maps with the same score are not "
+            "double-counted in k)"
+        ),
     )
     search_method.add_argument(
         "--pretty-print",
         action="store_true",
-        help="pretty print mapping results to map_*.out files"
+        help="pretty print mapping results to map_*.out files",
     )
 
     # parse

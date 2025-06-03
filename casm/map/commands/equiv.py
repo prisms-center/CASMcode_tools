@@ -1,25 +1,31 @@
 """Find equivalent structures.
 Mostly from libcasm.configuration tests/configuration/test_structure_conversions.py
 """
-import libcasm.configuration as casmconfig
-import libcasm.mapping.info as mapinfo
-import libcasm.mapping.methods as mapmethods
-import libcasm.xtal as xtal
+
 import numpy as np
+
+import libcasm.xtal as xtal
 
 
 def make_equivalent_structures(
     structure: xtal.Structure, point_group: list[xtal.SymOp]
 ):
     """Given a structure and a point group, construct all equivalent structures.
-    If this function is used to generate equivalent mapped structures, then the structure should be the mapped child structure from `mapmethods.make_mapped_structure` and the point group should be the point group of the parent. This function will only return structures with positive determinants, and will raise an error if a structure with negative determinant is unique under the point group symmetry operations.
+
+    If this function is used to generate equivalent mapped structures, then the
+    structure should be the mapped child structure from
+    :func:`libcasm.mapping.methods.make_mapped_structure` and the point group should be
+    the point group of the parent. This function will only return structures with
+    positive determinants, and will raise an error if a structure with negative
+    determinant is unique under the point group symmetry operations.
 
     Parameters
     ----------
     structure : xtal.Structure
         The structure used to generate equivalents.
     point_group : list[xtal.SymOp]
-        The point group symmetry operations to apply to the structure. To generate equivalent mapped child structures, use the point group of the parent.
+        The point group symmetry operations to apply to the structure. To generate
+        equivalent mapped child structures, use the point group of the parent.
 
     Returns
     -------
@@ -51,7 +57,8 @@ def make_equivalent_structures(
                 break
         if not found:
             raise ValueError(
-                f"There is a equivalent structure with a negative determinant: {i.lattice().column_vector_matrix()}"
+                f"There is a equivalent structure with a "
+                f"negative determinant: {neg_struc.lattice().column_vector_matrix()}"
             )
     return equivalent_structures
 
@@ -60,20 +67,29 @@ def make_equivalent_paths(
     path: list[xtal.Structure],
     point_group: list[xtal.SymOp],
 ):
-    """Given a list of structures along a deformation path and a point group, construct all equivalent deformation paths.
-    This function shares its logic with `make_equivalent_structures`. The point group should be the point group of the parent. This function will only return structures with positive determinants, and will raise an error if a structure with negative determinant is unique under the point group symmetry operations.
+    """Given a list of structures along a deformation path and a point group, construct
+    all equivalent deformation paths.
+
+    This function shares its logic with `make_equivalent_structures`. The point group
+    should be the point group of the parent. This function will only return structures
+    with positive determinants, and will raise an error if a structure with negative
+    determinant is unique under the point group symmetry operations.
 
     Parameters
     ----------
     path : list[xtal.Structure]
-        A deformation pathway. The structure used to generate and compare equivalents is the last item in the list.
+        A deformation pathway. The structure used to generate and compare equivalents
+        is the last item in the list.
     point_group : list[xtal.SymOp]
-        The point group symmetry operations to apply to the path. To generate equivalent deformation pathways from a parent structure to a child structure, use the point group of the parent.
+        The point group symmetry operations to apply to the path. To generate
+        equivalent deformation pathways from a parent structure to a child structure,
+        use the point group of the parent.
 
     Returns
     -------
     equivalent_paths : list[list[xtal.Structure]]
-        The outer list contains each path and the inner list contains the structures in the path.
+        The outer list contains each path and the inner list contains the structures in
+        the path.
     """
     equivalent_paths = []
     negative_determinant_paths = []
@@ -116,7 +132,10 @@ def make_equivalent_paths(
 
 def check_equiv(s1: xtal.Structure, s2: xtal.Structure, point_group: list[xtal.SymOp]):
     """Check if two structures are equivalent, including symmetry operations.
-    This function checks if there are any point group operations which map s1 onto s2. If comparing two mapped child structures, the point group should be the point group of the parent crystal. This will not check for translational equivalence.
+
+    This function checks if there are any point group operations which map s1 onto s2.
+    If comparing two mapped child structures, the point group should be the point group
+    of the parent crystal. This will not check for translational equivalence.
 
     Parameters
     ----------
@@ -125,7 +144,8 @@ def check_equiv(s1: xtal.Structure, s2: xtal.Structure, point_group: list[xtal.S
     s2 : xtal.Structure
         Second structure to compare.
     point_group : list[xtal.SymOp]
-        List of symmetry operations to apply to s2. If comparing mapped child structures, use the point group of the parent crystal.
+        List of symmetry operations to apply to s2. If comparing mapped child
+        structures, use the point group of the parent crystal.
 
     Returns
     -------

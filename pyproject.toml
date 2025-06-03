@@ -44,11 +44,11 @@ source-dir = "doc"
 build-dir  = "doc/build"
 all_files  = 1
 
-[tool.ruff]
-select = ["E", "F", "I"]
+[tool.ruff.lint]
+select = ["NPY201", "E", "F", "I"]
 
-[tool.ruff.per-file-ignores]
+[tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
 
-[tool.ruff.isort]
-known-first-party = ["casm"]
+[tool.ruff.lint.isort]
+known-first-party = ["libcasm", "casm"]
