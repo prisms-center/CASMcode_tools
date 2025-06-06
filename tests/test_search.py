@@ -1,54 +1,65 @@
-from pathlib import Path
-
-import pytest
-
-import casm.map.commands.search as search
-from casm.map.commands.main import parse_args
+from casm.map.commands.main import main
+from casm.map.misc.json_io import read_required
+from libcasm.mapping.info import ScoredStructureMapping
+from libcasm.xtal import Prim, Structure
 
 
-@pytest.fixture
-def hcp_ag_primitive_poscar():
-    return Path(__file__).parent / "structures/HCP_Ag.vasp"
-
-
-@pytest.fixture
-def bcc_li_conventional_poscar():
-    return Path(__file__).parent / "structures/BCC_Li_conv.vasp"
-
-
-@pytest.fixture
-def bcc_li_primitive_poscar():
-    return Path(__file__).parent / "structures/BCC_Li.vasp"
-
-
-@pytest.fixture
-def fcc_li_primitive_poscar():
-    return Path(__file__).parent / "structures/FCC_Li.vasp"
-
-
-@pytest.fixture
-def hcp_li_primitive_poscar():
-    return Path(__file__).parent / "structures/HCP_Li.vasp"
-
-
-def test_mask_occupants(hcp_ag_primitive_poscar, bcc_li_conventional_poscar):
-    args = parse_args(
-        [
+def test_search_1(get_structure, tmp_path):
+    main(
+        argv=[
+            "casm-map",
             "search",
-            hcp_ag_primitive_poscar.as_posix(),
-            bcc_li_conventional_poscar.as_posix(),
-        ]
+            get_structure("BCC_Li.vasp"),
+            get_structure("FCC_Li.vasp"),
+        ],
+        working_dir=tmp_path,
     )
-    maps_without_masking, _, _ = search.search(args)
-    assert len(maps_without_masking) == 0
 
-    args = parse_args(
-        [
+    files = [file.name for file in tmp_path.iterdir()]
+    assert "map_0.json" in files
+
+    data = read_required(tmp_path / "map_0.json")
+
+    assert "child" in data
+    assert "parent" in data
+    assert "map" in data
+
+    prim = Prim.from_dict(data["parent"])
+    assert isinstance(prim, Prim)
+
+    child = Structure.from_dict(data["child"])
+    assert isinstance(child, Structure)
+
+    mapping = ScoredStructureMapping.from_dict(data=data["map"], prim=prim)
+    assert isinstance(mapping, ScoredStructureMapping)
+
+
+def test_mask_occupants_1(get_structure, tmp_path):
+    main(
+        argv=[
+            "casm-map",
             "search",
-            hcp_ag_primitive_poscar.as_posix(),
-            bcc_li_conventional_poscar.as_posix(),
+            get_structure("HCP_Ag.vasp"),
+            get_structure("BCC_Li_conv.vasp"),
+        ],
+        working_dir=tmp_path,
+    )
+
+    files = [file.name for file in tmp_path.iterdir()]
+    assert "map_0.json" not in files
+
+
+def test_mask_occupants_2(get_structure, tmp_path):
+    main(
+        argv=[
+            "casm-map",
+            "search",
+            get_structure("HCP_Ag.vasp"),
+            get_structure("BCC_Li_conv.vasp"),
             "--mask-occupants",
-        ]
+        ],
+        working_dir=tmp_path,
     )
-    maps_with_masking, _, _ = search.search(args)
-    assert len(maps_with_masking) >= 1
+
+    files = [file.name for file in tmp_path.iterdir()]
+    assert "map_0.json" in files

@@ -95,7 +95,7 @@ def write_maps(maps, parent, child, additional_data=[]):
                 for k, v in additional_data[i].items():
                     data[k] = v
         with open(f"map_{i}.json", "w") as f:
-            json.dump(data, f)
+            f.write(xtal.pretty_json(data))
 
 
 def pretty_print_maps(maps, parent, child, additional_data=[]):

@@ -22,9 +22,9 @@ classifiers = [
     "Topic :: Scientific/Engineering",
 ]
 dependencies = [
-    "libcasm-xtal>=2.0a8",
-    "libcasm-mapping>=2.0a2",
-    "libcasm-configuration>=2.0a2",
+    "libcasm-xtal>=2.0.1",
+    "libcasm-mapping>=2.0.1",
+    "libcasm-configuration>=2.0.0",
     "numpy",
 ]
 

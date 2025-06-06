@@ -3,11 +3,13 @@ This is the casm-map interactive mapping script.
 """
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
 import numpy as np
 
+import casm.map.misc.contexts as contexts
 import casm.map.utils as utils
 import libcasm.mapping.methods as mapmethods
 import libcasm.xtal as xtal
@@ -168,7 +170,7 @@ def run_equiv(args):
                 utils.write_structures(v, path_dir)
 
 
-def parse_args(args):
+def make_parser():
     parser = argparse.ArgumentParser(
         description="Interface to libcasm.mapping utilities."
     )
@@ -376,17 +378,34 @@ def parse_args(args):
         help="pretty print mapping results to map_*.out files",
     )
 
-    # parse
-    return parser.parse_args(args)
+    return parser
 
 
-def main():
-    args = parse_args(sys.argv[1:])
-    if not hasattr(args, "func"):  # in case no input is passed to casm-map
-        print("run 'casm-map --help' to print usage information")
-        sys.exit()
-    args.func(args)
+def parse_args(argv=None, working_dir=None):
+    """Parse command line arguments and return the parsed arguments."""
+    import os
+
+    if argv is None:
+        argv = sys.argv
+    if working_dir is None:
+        working_dir = os.getcwd()
+
+    parser = make_parser()
+    return parser.parse_args(argv[1:])
 
 
-if __name__ == "__main__":
-    main()
+def main(argv=None, working_dir=None):
+    if argv is None:
+        argv = sys.argv
+    if working_dir is None:
+        working_dir = os.getcwd()
+
+    parser = make_parser()
+    if len(argv) < 2:
+        parser.print_help()
+        return 1
+    args = parser.parse_args(argv[1:])
+
+    with contexts.working_dir(working_dir):
+        args.func(args)
+    return 0
