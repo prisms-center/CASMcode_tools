@@ -381,19 +381,6 @@ def make_parser():
     return parser
 
 
-def parse_args(argv=None, working_dir=None):
-    """Parse command line arguments and return the parsed arguments."""
-    import os
-
-    if argv is None:
-        argv = sys.argv
-    if working_dir is None:
-        working_dir = os.getcwd()
-
-    parser = make_parser()
-    return parser.parse_args(argv[1:])
-
-
 def main(argv=None, working_dir=None):
     if argv is None:
         argv = sys.argv
