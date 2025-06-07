@@ -11,5 +11,9 @@ setup(
         "casm.map",
         "casm.map.commands",
         "casm.map.misc",
+        "casm.tools",
+        "casm.tools.calc",
+        "casm.tools.map",
+        "casm.tools.shared",
     ],
 )

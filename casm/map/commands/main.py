@@ -381,13 +381,75 @@ def make_parser():
     return parser
 
 
+def default_function(args):
+    """Default function to run if no subcommand is provided."""
+    print("Run default function")
+    print(f"parent: {args.parent}, child: {args.child}")
+    print(f"parent + child: {args.parent + args.child}")
+    return 0
+
+
+def add_function(args):
+    """Function to run for add subcommand."""
+    print("Run add function")
+    print(f"first: {args.first}, second: {args.second}")
+    print(f"sum: {args.first + args.second}")
+    return 0
+
+
+def multiply_function(args):
+    """Function to run for multiply subcommand."""
+    print("Run multiply")
+    print(f"first: {args.first}, second: {args.second}")
+    print(f"product: {args.first * args.second}")
+    return 0
+
+
+def add_add_parser(method):
+    subparser = method.add_parser("add")
+    subparser.set_defaults(func=add_function)
+    subparser.add_argument("--first", type=float, required=True, help="First parameter")
+    subparser.add_argument(
+        "--second", type=float, required=True, help="Second parameter"
+    )
+
+
+def add_multiply_parser(method):
+    subparser = method.add_parser("multiply")
+    subparser.set_defaults(func=multiply_function)
+    subparser.add_argument("--first", type=float, required=True, help="First parameter")
+    subparser.add_argument(
+        "--second", type=float, required=True, help="Second parameter"
+    )
+
+
+def make_parser_revised():
+    """Make a parser for the casm-map command line interface."""
+    parser = argparse.ArgumentParser(
+        description="CASM structure mapping CLI tool",
+    )
+    parser.set_defaults(func=default_function)  # Set the default function
+    parser.add_argument("parent", type=float, help="Parent structure file")
+    parser.add_argument("child", type=float, help="Child structure file")
+
+    # choose method
+    method = parser.add_subparsers(
+        title="Select which method to use",
+        required=False,
+    )
+
+    add_add_parser(method)
+    add_multiply_parser(method)
+    return parser
+
+
 def main(argv=None, working_dir=None):
     if argv is None:
         argv = sys.argv
     if working_dir is None:
         working_dir = os.getcwd()
 
-    parser = make_parser()
+    parser = make_parser_revised()
     if len(argv) < 2:
         parser.print_help()
         return 1
