@@ -88,24 +88,32 @@ primitive structures.
 ## Mapping relaxations from known starting structures
 
 When mapping a relaxed structure (child) from a known starting 
-structure (parent superstructure), the `--parent-superstructure` 
-option can be used to specify a file containing the parent 
-superstructure and skip searching over superstructures and 
-lattice reorientations. The deformation gradient is still 
-calculated and atom mapping is still performed. The specified
-file must be a valid structure file, but only the lattice is 
-actually used.
+structure (parent), the `--fix-parent` option can be used to 
+skip searching over parent superstructures and lattice 
+reorientations. The deformation gradient is still calculated and
+atom mapping is still performed.
 
-## Mapping relaxations with fixed atoms
+
+## Forcing and suppressing atom mappings
 
 The `--forced-on` option can be used to constrain the atom
 mapping search and force the mapping of specific atoms from
 the child structure to specific atoms in the parent structure.
 
+The `--forced-off` option can be used to suppress the mapping
+of specific atoms from the child structure to specific atoms in
+the parent structure.
+
+
+## Mapping relaxations with fixed atoms
+
 By default, mean displacements are removed from the atom 
 mappings. For relaxations where some atom positions are fixed, 
-it is usually preferable to suppress this with the
-`--no-remove-mean-displacement` option.
+it may be desirable to suppress this with the
+`--no-remove-mean-displacement` option. If this option is 
+provided, then `--forced-on` must be specified for at least
+one pair of atoms. A trial translation resulting in an exact 
+mapping (zero displacement) is generated for each pair.
 
 
 ## Parameters
@@ -148,12 +156,12 @@ Total mapping options:
     If given, do not remove the mean displacement from the 
     structure mappings. By default, the mean displacement is
     removed from the structure mappings.
---parent-superstructure: Optional[pathlib.Path]=None
-    A file containing the parent superstructure. If given, skip 
-    searching over superstructures and lattice reorientations. 
-    The deformation gradient is still calculated and atom 
-    mapping is still performed. The specified file must be a 
-    valid structure file, but only the lattice is actually used.
+--fix-parent: bool=False
+    If given, skip searching over parent superstructures and 
+    lattice reorientations. The deformation gradient is still 
+    calculated and atom mapping is still performed. The parent
+    and child are required to have the same number of atoms.
+    
 
 Lattice mapping options:
 
@@ -224,8 +232,7 @@ Input options:
     recognized by `ase.io.read` if ASE is installed.
 --parent-format: Optional[str]=None
     Same as `--format`, but overrides it to specify the format 
-    for reading the parent structure file. Also used for 
-    the `--parent-superstructure` option.
+    for reading the parent structure file.
 --child-format: Optional[str]=None
     Same as `--format`, but overrides it to specify the format 
     for reading the child structure file.
@@ -281,6 +288,12 @@ using the method of Thomas et al. [2] implemented in CASM [3]."
 """
 
 _other_desc = """
+--parent-superstructure: Optional[pathlib.Path]=None
+    A file containing the parent superstructure. If given, skip 
+    searching over superstructures and lattice reorientations. 
+    The deformation gradient is still calculated and atom 
+    mapping is still performed. The specified file must be a 
+    valid structure file, but only the lattice is actually used.
 --output-format: Optional[str]=None
     The format for writing structure files. If not specified, 
     the format is inferred from the child format. Supported 
@@ -307,8 +320,16 @@ def get_child_format(args):
 
 def run_search(args):
 
-    from casm.tools.shared.io import read_structure, write_structure
-    from casm.tools.shared.json_io import read_required
+    import math
+    import sys
+
+    import libcasm.xtal as xtal
+    from casm.tools.map import (
+        StructureMappingSearch,
+        StructureMappingSearchOptions,
+    )
+    from casm.tools.shared.io import read_structure
+    from casm.tools.shared.json_io import read_optional, read_required
 
     if args.desc:
         print(search_desc)
@@ -318,42 +339,11 @@ def run_search(args):
     print("Parent:")
     print(parent)
     print()
-    write_structure(
-        casm_structure=parent,
-        path=pathlib.Path("parent.xyz"),
-        format=None,
-    )
 
     child = read_structure(path=args.child, format=get_child_format(args))
     print("Child:")
     print(child)
     print()
-    write_structure(
-        casm_structure=parent,
-        path=pathlib.Path("child.xyz"),
-        format=None,
-    )
-
-    parent_superlattice = None
-    if args.parent_superstructure is not None:
-        parent_superstructure = read_structure(
-            path=args.parent_superstructure,
-            format=get_parent_format(args),
-        )
-        print("Parent superstructure:")
-        print(parent_superstructure)
-        print()
-        write_structure(
-            casm_structure=parent_superstructure,
-            path=pathlib.Path("parent_superstructure.xyz"),
-            format=None,
-        )
-        parent_superlattice = parent_superstructure.lattice()
-
-    from casm.tools.map import (
-        StructureMappingSearch,
-        StructureMappingSearchOptions,
-    )
 
     if args.options is not None:
         data = read_required(args.options)
@@ -370,6 +360,30 @@ def run_search(args):
         if args.iso_disp_cost:
             atom_mapping_cost_method = "isotropic_disp_cost"
 
+        forced_on = None
+        if args.forced_on is not None:
+            if len(args.forced_on) % 2 != 0:
+                raise ValueError(
+                    "The --forced-on option must be given as pairs of "
+                    "(parent atom index, child atom index)."
+                )
+            forced_on = {
+                int(args.forced_on[i]): int(args.forced_on[i + 1])
+                for i in range(0, len(args.forced_on), 2)
+            }
+
+        forced_off = None
+        if args.forced_off is not None:
+            if len(args.forced_off) % 2 != 0:
+                raise ValueError(
+                    "The --forced-off option must be given as pairs of "
+                    "(parent atom index, child atom index)."
+                )
+            forced_off = [
+                (args.forced_off[i], args.forced_off[i + 1])
+                for i in range(0, len(args.forced_off), 2)
+            ]
+
         opt = StructureMappingSearchOptions(
             max_n_atoms=args.max_n_atoms,
             min_n_atoms=args.min_n_atoms,
@@ -379,7 +393,7 @@ def run_search(args):
             total_max_cost=args.max_total_cost,
             total_k_best=args.k_best,
             no_remove_mean_displacement=args.no_remove_mean_displacement,
-            parent_superlattice=parent_superlattice,
+            fix_parent=args.fix_parent,
             lattice_cost_weight=args.lattice_cost_weight,
             cost_tol=args.cost_tol,
             lattice_mapping_min_cost=args.min_lattice_cost,
@@ -388,19 +402,62 @@ def run_search(args):
             lattice_mapping_reorientation_range=args.lattice_reorientation_range,
             lattice_mapping_cost_method=lattice_mapping_cost_method,
             atom_mapping_cost_method=atom_mapping_cost_method,
+            forced_on=forced_on,
+            forced_off=forced_off,
             deduplication_interpolation_factors=args.dedup_interp_factors,
         )
 
-    import sys
+    # --merge option
+    merge = args.merge
 
-    import libcasm.xtal as xtal
+    # --next option:
+    #     run search with next greatest common multiple number of atoms and
+    #     all other options the same; set merge=True
+    if args.next:
+        n_atoms_parent = len(parent.atom_type())
+        n_atoms_child = len(child.atom_type())
+        n_atoms_lcm = math.lcm(n_atoms_parent, n_atoms_child)
+
+        results_dir = "results" if args.results_dir is None else args.results_dir
+
+        data = read_optional(results_dir / "options_history.json", default=[])
+        options_history = [
+            StructureMappingSearchOptions.from_dict(data=x) for x in data
+        ]
+        last_max_n_atoms = None
+        if len(options_history):
+            if options_history[-1].max_n_atoms is None:
+                last_max_n_atoms = n_atoms_lcm
+            else:
+                last_max_n_atoms = options_history[-1].max_n_atoms
+
+        if last_max_n_atoms is None:
+            next_max_n_atoms = n_atoms_lcm
+        else:
+            next_max_n_atoms = 0
+            while next_max_n_atoms <= last_max_n_atoms:
+                next_max_n_atoms += n_atoms_lcm
+
+        opt.max_n_atoms = next_max_n_atoms
+        opt.min_n_atoms = next_max_n_atoms
+        merge = True
+
+        print()
+        print(
+            f"""
+--next: 
+    Expanding search to next greatest common multiple number
+    of atoms ({next_max_n_atoms} atoms) and merging results.
+"""
+        )
+        sys.stdout.flush()
 
     print("Options:")
     print(xtal.pretty_json(opt.to_dict()))
     sys.stdout.flush()
 
     f = StructureMappingSearch(opt=opt)
-    code = f(parent=parent, child=child, results_dir=args.results_dir, merge=args.merge)
+    code = f(parent=parent, child=child, results_dir=args.results_dir, merge=merge)
 
     return code
 
@@ -482,15 +539,24 @@ def make_search_parser(m):
             "(default= remove mean displacement )."
         ),
     )
+    # total.add_argument(
+    #     "--parent-superstructure",
+    #     metavar="PARENT_SUPERSTRUCTURE",
+    #     type=pathlib.Path,
+    #     default=None,
+    #     help=(
+    #         "Parent superstructure file. Fixes the parent superstructure using "
+    #         "the lattice of the specified structure file "
+    #         "(default= search over parent superstructures )."
+    #     ),
+    # )
     total.add_argument(
-        "--parent-superstructure",
-        metavar="PARENT_SUPERSTRUCTURE",
-        type=pathlib.Path,
-        default=None,
+        "--fix-parent",
+        action="store_true",
+        default=False,
         help=(
-            "Parent superstructure file. Fixes the parent superstructure using "
-            "the lattice of the specified structure file "
-            "(default= search over parent superstructures )."
+            "Map to parent structure as provided; skip checking superstructures "
+            "and lattice reorientations."
         ),
     )
 
@@ -615,8 +681,7 @@ def make_search_parser(m):
     additional = search.add_argument_group("Additional options")
     additional.add_argument(
         "--next",
-        type=str,
-        default=None,
+        action="store_true",
         help=(
             "Expand previous search to include next greatest common multiple number "
             "of atoms."

@@ -49,13 +49,15 @@ class StructureMappingSearchOptions:
         total_max_cost: float = 0.3,
         total_k_best: int = 1,
         no_remove_mean_displacement: bool = False,
-        parent_superlattice: Optional[xtal.Lattice] = None,
+        fix_parent: bool = False,
         lattice_mapping_min_cost: Optional[float] = 0.0,
         lattice_mapping_max_cost: Optional[float] = 1e20,
         lattice_mapping_k_best: Optional[int] = 10,
         lattice_mapping_reorientation_range: Optional[int] = 1,
         lattice_mapping_cost_method: str = "symmetry_breaking_strain_cost",
         atom_mapping_cost_method: str = "symmetry_breaking_disp_cost",
+        forced_on: Optional[dict[int, int]] = None,
+        forced_off: Optional[list[tuple[int, int]]] = None,
         lattice_cost_weight: float = 0.5,
         cost_tol: Optional[float] = 1e-5,
         deduplication_interpolation_factors: Optional[list[float]] = None,
@@ -89,8 +91,12 @@ class StructureMappingSearchOptions:
             current `k_best`-ranked result are also kept.
         no_remove_mean_displacement : bool = False
             If True, do not remove the mean displacement from the atom mapping.
-        parent_superlattice : Optional[xtal.Lattice] = None
-            If not None, the parent superlattice is fixed to this lattice.
+        fix_parent : bool = False
+            If True, map to the parent structure as provided and skip searching over
+            parent superstructures and lattice reorientations. The deformation
+            gradient is still calculated and atom mapping is still performed. Only
+            allowed if the number of atoms in the parent structure is the same as
+            the number of atoms in the child structure.
         lattice_mapping_min_cost : float = 0.0
             Keep lattice mappings with cost >= min_cost. Used when
             `map_lattices_with_reorientation` is True.
@@ -115,6 +121,12 @@ class StructureMappingSearchOptions:
         atom_mapping_cost_method : str = 'symmetry_breaking_disp_cost'
             Selects the method used to calculate atom mapping costs. One of
             "isotropic_disp_cost" or "symmetry_breaking_disp_cost".
+        forced_on : Optional[dict[int, int]] = None
+            A map of assignments `parent_atom_index: child_atom_index` that are forced
+            on. Indices begin at 0. Requires that `fix_parent` is True.
+        forced_off : Optional[list[tuple[int, int]]] = None
+            A list of tuples of assignments `(parent_atom_index, child_atom_index) that
+            are forced off. Indices begin at 0. Requires that `fix_parent` is True.
         lattice_cost_weight : float = 0.5
             The weight of the lattice cost in the total structure mapping cost.
         cost_tol : float = 1e-5
@@ -137,13 +149,15 @@ class StructureMappingSearchOptions:
         self.total_max_cost = total_max_cost
         self.total_k_best = total_k_best
         self.no_remove_mean_displacement = no_remove_mean_displacement
-        self.parent_superlattice = parent_superlattice
+        self.fix_parent = fix_parent
         self.lattice_mapping_min_cost = lattice_mapping_min_cost
         self.lattice_mapping_max_cost = lattice_mapping_max_cost
         self.lattice_mapping_k_best = lattice_mapping_k_best
         self.lattice_mapping_reorientation_range = lattice_mapping_reorientation_range
         self.lattice_mapping_cost_method = lattice_mapping_cost_method
         self.atom_mapping_cost_method = atom_mapping_cost_method
+        self.forced_on = forced_on
+        self.forced_off = forced_off
         self.lattice_cost_weight = lattice_cost_weight
         self.cost_tol = cost_tol
 
@@ -170,17 +184,15 @@ class StructureMappingSearchOptions:
             "total_max_cost": self.total_max_cost,
             "total_k_best": self.total_k_best,
             "no_remove_mean_displacement": self.no_remove_mean_displacement,
-            "parent_superlattice": (
-                self.parent_superlattice.to_dict()
-                if self.parent_superlattice is not None
-                else None
-            ),
+            "fix_parent": self.fix_parent,
             "lattice_mapping_min_cost": self.lattice_mapping_min_cost,
             "lattice_mapping_max_cost": self.lattice_mapping_max_cost,
             "lattice_mapping_k_best": self.lattice_mapping_k_best,
             "lattice_mapping_reorientation_range": self.lattice_mapping_reorientation_range,  # noqa: E501
             "lattice_mapping_cost_method": self.lattice_mapping_cost_method,
             "atom_mapping_cost_method": self.atom_mapping_cost_method,
+            "forced_on": self.forced_on,
+            "forced_off": self.forced_off,
             "lattice_cost_weight": self.lattice_cost_weight,
             "cost_tol": self.cost_tol,
             "deduplication_interpolation_factors": self.deduplication_interpolation_factors,  # noqa: E501
@@ -208,11 +220,7 @@ class StructureMappingSearchOptions:
             total_max_cost=data["total_max_cost"],
             total_k_best=data["total_k_best"],
             no_remove_mean_displacement=data["no_remove_mean_displacement"],
-            parent_superlattice=(
-                xtal.Lattice.from_dict(data["parent_superlattice"])
-                if data["parent_superlattice"] is not None
-                else None
-            ),
+            fix_parent=data["fix_parent"],
             lattice_mapping_min_cost=data["lattice_mapping_min_cost"],
             lattice_mapping_max_cost=data["lattice_mapping_max_cost"],
             lattice_mapping_k_best=data["lattice_mapping_k_best"],
@@ -221,6 +229,12 @@ class StructureMappingSearchOptions:
             ],
             lattice_mapping_cost_method=data["lattice_mapping_cost_method"],
             atom_mapping_cost_method=data["atom_mapping_cost_method"],
+            forced_on=data["forced_on"],
+            forced_off=(
+                [tuple(x) for x in data["forced_off"]]
+                if data["forced_off"] is not None
+                else None
+            ),
             lattice_cost_weight=["lattice_cost_weight"],
             cost_tol=data["cost_tol"],
             deduplication_interpolation_factors=data[
@@ -275,6 +289,27 @@ def results_dir_exists_error(results_dir: pathlib.Path) -> None:
 
 --results-dir={results_dir}
 
+# Stopping...                                                                  #
+################################################################################
+"""
+    print(error)
+    sys.exit(1)
+
+
+def invalid_fix_parent_error() -> None:
+    """Print an error message if the `--fix-parent` option is used with a parent and
+    child structure that have different numbers of atoms."""
+
+    error = """
+################################################################################
+################################################################################
+# Error: --fix-parent requires parent and child w/ same number of atoms.       #
+#                                                                              #
+# The `--fix-parent` option is used to map to the parent structure as          #
+# provided, without searching over parent superstructures and lattice          #
+# reorientations. It is only allowed if the number of atoms in the parent      #
+# structure is the same as the number of atoms in the child structure.         #
+#                                                                              #
 # Stopping...                                                                  #
 ################################################################################
 """
@@ -642,21 +677,11 @@ class StructureMappingSearch:
             print("Stopping")
             sys.exit(1)
 
-        if self.opt.parent_superlattice is not None:
-            # TODO: --parent-superstructure
-            raise Exception("--parent-superstructure is not yet supported")
-
-            if self.opt.child_transformation_matrix_to_super_list is not None:
-                raise Exception(
-                    "parent_superlattice is not compatible with "
-                    "child_transformation_matrix_to_super_list"
-                )
-
-            if self.opt.parent_transformation_matrix_to_super_list is not None:
-                raise Exception(
-                    "parent_superlattice is not compatible with "
-                    "parent_transformation_matrix_to_super_list"
-                )
+        if self.opt.fix_parent:
+            child_n_atoms = len(child.atom_type())
+            parent_n_atoms = len(parent.atom_type())
+            if child_n_atoms != parent_n_atoms:
+                invalid_fix_parent_error()
 
         else:
             # Print notice if parent or child are not primitive, and write the
@@ -732,6 +757,37 @@ class StructureMappingSearch:
         child_T_list: Optional[list[np.ndarray]] = None,
         parent_T_list: Optional[list[np.ndarray]] = None,
     ):
+        """Make a list of (T_child, T_parent) pairs for the search.
+
+        Parameters
+        ----------
+        parent : xtal.Structure
+            The parent structure.
+        child : xtal.Structure
+            The child structure.
+        parent_prim : casmconfig.Prim
+            The primitive parent structure.
+        min_n_atoms : int
+            The minimum number of atoms in the superstructures that should be included
+            in the search.
+        max_n_atoms : int
+            The maximum number of atoms in the superstructures that should be included
+            in the search.
+        child_T_list : Optional[list[np.ndarray]] = None
+            For the child superstructures, a list of transformation matrices
+            :math:`T_{2}` to use. If None, the child superstructures are enumerated
+            based on the `min_n_atoms` and `max_n_atoms` options.
+        parent_T_list : Optional[list[np.ndarray]] = None
+            For the parent superstructures, a list of transformation matrices
+            :math:`T_{1}` to use. If None, the parent superstructures are enumerated
+            based on the `min_n_atoms` and `max_n_atoms` options.
+
+        Returns
+        -------
+        T_pairs: list[tuple[np.ndarray, np.ndarray]]
+            List of (T_child, T_parent) pairs.
+
+        """
         # Results, list of (T_child, T_parent) pairs
         T_pairs = []
 
@@ -887,6 +943,8 @@ class StructureMappingSearch:
             self.opt.lattice_mapping_reorientation_range
         )
         _atom_cost_f = self._atom_cost_f()
+        _forced_on = self.opt.forced_on if self.opt.forced_on is not None else {}
+        _forced_off = self.opt.forced_off if self.opt.forced_off is not None else []
         _total_cost_f = self._total_cost_f()
         _cost_tol = self.opt.cost_tol
 
@@ -906,16 +964,21 @@ class StructureMappingSearch:
             override_structure_factor_group=None,
         )
 
-        # Get a list of (T_child, T_parent) pairs
-        T_pairs = self._make_T_pairs(
-            parent=parent,
-            child=child,
-            parent_prim=parent_prim,
-            min_n_atoms=_min_n_atoms,
-            max_n_atoms=_max_n_atoms,
-            child_T_list=_child_T_list,
-            parent_T_list=_parent_T_list,
-        )
+        if self.opt.fix_parent:
+            I_matrix = np.eye(3, dtype="int")
+            T_pairs = [(I_matrix, I_matrix)]
+        else:
+
+            # Get a list of (T_child, T_parent) pairs
+            T_pairs = self._make_T_pairs(
+                parent=parent,
+                child=child,
+                parent_prim=parent_prim,
+                min_n_atoms=_min_n_atoms,
+                max_n_atoms=_max_n_atoms,
+                child_T_list=_child_T_list,
+                parent_T_list=_parent_T_list,
+            )
 
         total = len(T_pairs)
         print(f"Beginning search over {total} parent / child superstructure pairs...")
@@ -936,13 +999,6 @@ class StructureMappingSearch:
             n_atoms = child_n_atoms * child_vol
         min_total_cost = 0.0
         max_total_cost = 0.0
-
-        # with tqdm(
-        #     total=total,
-        #     desc="Searching",
-        #     unit="pair",
-        #     ncols=80,
-        # ) as pbar:
 
         for i_pair, _pair in enumerate(T_pairs):
 
@@ -972,40 +1028,58 @@ class StructureMappingSearch:
                 cost_tol=_cost_tol,
             )
 
-            # parent_T = xtal.make_transformation_matrix_to_super(
-            #     unit_lattice=parent.lattice(),
-            #     superlattice=parent_superlattice,
-            # )
-            #
-            # print(
-            #     f"  - Parent supercell {i_parent_superlattice + 1}"
-            #     f"/{len(parent_superlattices)}... "
-            # )
-            # sys.stdout.flush()
+            if self.opt.fix_parent:
+                lattice_mapping = mapmethods.map_lattices_without_reorientation(
+                    lattice1=parent_search_data.prim_lattice(),
+                    lattice2=child_structure_data.lattice(),
+                    transformation_matrix_to_super=parent_T,
+                )
+                F = lattice_mapping.deformation_gradient()
+                if _lattice_mapping_cost_method == "isotropic_strain_cost":
+                    lattice_cost = mapinfo.isotropic_strain_cost(
+                        deformation_gradient=F,
+                    )
+                elif _lattice_mapping_cost_method == "symmetry_breaking_strain_cost":
+                    lattice_cost = mapinfo.symmetry_breaking_strain_cost(
+                        deformation_gradient=F,
+                        lattice1_point_group=parent_search_data.prim_crystal_point_group(),
+                    )
+                else:
+                    raise ValueError(
+                        f"Unknown lattice mapping cost method: "
+                        f"{_lattice_mapping_cost_method}"
+                    )
+                lattice_mappings = [
+                    mapinfo.ScoredLatticeMapping(
+                        lattice_cost=lattice_cost,
+                        lattice_mapping=lattice_mapping,
+                    )
+                ]
 
-            # Might be able to tighten lattice max cost limit:
-            _curr_search_max = _total_max_cost
-            if len(search_results) >= _total_k_best:
-                _curr_search_max = search_results[-1].total_cost()
+            else:
+                # Might be able to tighten lattice max cost limit:
+                _curr_search_max = _total_max_cost
+                if len(search_results) >= _total_k_best:
+                    _curr_search_max = search_results[-1].total_cost()
 
-            _curr_lattice_max = min(
-                _lattice_mapping_max_cost,
-                _curr_search_max / _lattice_cost_weight,
-            )
+                _curr_lattice_max = min(
+                    _lattice_mapping_max_cost,
+                    _curr_search_max / _lattice_cost_weight,
+                )
 
-            lattice_mappings = mapmethods.map_lattices(
-                lattice1=parent.lattice(),
-                lattice2=child_structure_data.lattice(),
-                transformation_matrix_to_super=parent_T,
-                lattice1_point_group=parent_search_data.prim_crystal_point_group(),
-                lattice2_point_group=child_structure_data.structure_crystal_point_group(),
-                min_cost=_lattice_mapping_min_cost,
-                max_cost=_curr_lattice_max,
-                cost_method=_lattice_mapping_cost_method,
-                k_best=_lattice_mapping_k_best,
-                reorientation_range=_lattice_mapping_reorientation_range,
-                cost_tol=_cost_tol,
-            )
+                lattice_mappings = mapmethods.map_lattices(
+                    lattice1=parent.lattice(),
+                    lattice2=child_structure_data.lattice(),
+                    transformation_matrix_to_super=parent_T,
+                    lattice1_point_group=parent_search_data.prim_crystal_point_group(),
+                    lattice2_point_group=child_structure_data.structure_crystal_point_group(),
+                    min_cost=_lattice_mapping_min_cost,
+                    max_cost=_curr_lattice_max,
+                    cost_method=_lattice_mapping_cost_method,
+                    k_best=_lattice_mapping_k_best,
+                    reorientation_range=_lattice_mapping_reorientation_range,
+                    cost_tol=_cost_tol,
+                )
 
             for scored_lattice_mapping in lattice_mappings:
                 lattice_mapping_data = mapsearch.LatticeMappingSearchData(
@@ -1015,9 +1089,34 @@ class StructureMappingSearch:
                 )
 
                 # for each lattice mapping, generate possible translations
-                trial_translations = mapsearch.make_trial_translations(
-                    lattice_mapping_data=lattice_mapping_data,
-                )
+                if not _enable_remove_mean_displacement:
+                    # If mean displacement removal is disabled, then we need info
+                    # on which parent/atom mappings to force on. (We could also allow
+                    # generating every combination here.)
+                    if len(_forced_on) == 0:
+                        raise ValueError(
+                            "If --no-remove-mean-displacement is set, "
+                            "the --forced-on option must be set."
+                        )
+                    # If forced_on is set, also use parent/child pairs to generate
+                    # trial translations
+                    trial_translations = []
+                    parent_cart = parent_search_data.prim_site_coordinate_cart()
+                    child_cart = (
+                        lattice_mapping_data.atom_coordinate_cart_in_supercell()
+                    )
+                    for parent_index, child_index in _forced_on.items():
+                        trial_translations.append(
+                            parent_cart[:, parent_index] - child_cart[:, child_index]
+                        )
+                else:
+                    # Make a minimal set of trial translations
+                    trial_translations = mapsearch.make_trial_translations(
+                        lattice_mapping_data=lattice_mapping_data,
+                    )
+                print("len(trial_translations):", len(trial_translations))
+                print("\n")
+                sys.stdout.flush()
 
                 # for each combination of lattice mapping and translation,
                 # make and insert a mapping solution (MappingNode)
@@ -1026,8 +1125,8 @@ class StructureMappingSearch:
                         lattice_cost=scored_lattice_mapping.lattice_cost(),
                         lattice_mapping_data=lattice_mapping_data,
                         trial_translation_cart=trial_translation,
-                        forced_on={},
-                        forced_off=[],
+                        forced_on=_forced_on,
+                        forced_off=_forced_off,
                     )
 
             while search.size():
@@ -1086,6 +1185,9 @@ class StructureMappingSearch:
             child=child,
             parent_prim=parent_prim,
         )
+
+        # Write the options history
+        self.write_options_history(results_dir=results_dir)
 
         return 0
 
@@ -1269,6 +1371,10 @@ class StructureMappingSearch:
             quiet=True,
         )
 
+    def write_options_history(
+        self,
+        results_dir: pathlib.Path,
+    ) -> None:
         options = read_optional(results_dir / "options_history.json", default=[])
         options.append(self.opt.to_dict())
         safe_dump(
