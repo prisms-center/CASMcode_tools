@@ -1,14 +1,11 @@
 import pathlib
 
-from casm.tools.shared.io import read_structure, write_structure
-
 # <-- max width = 80 characters                            --> #
 ################################################################
 search_desc = """
-Extended description of the `casm-map search` command:
+# The `casm-map search` command:
 
-Method
-------
+## Method
 
 The `casm-map search` command is intended for finding mappings 
 between two crystal structures that have the same stoichiometry, 
@@ -22,7 +19,7 @@ searches for mappings, and writes the results to a
 
 Mappings are found using the search method described in Ref. 
 [2], applied to the case that the parent structure specifies one
-and only one atom type occupying the site. In summary, this does
+and only one atom type occupying each site. In summary, this does
 the following:
 
 1. Make superstructures of the child structure, for a specified 
@@ -45,8 +42,7 @@ the following:
    on the path between the parent and mapped child.
 
 
-Results
--------
+## Results
 
 Results are written to a JSON file in the specified results 
 directory and a summary table is printed to the console.
@@ -54,56 +50,82 @@ directory and a summary table is printed to the console.
 Results are written to:
 
     <results_dir>/
-    └── mappings.json
+    ├── mappings.json
+    └── options_history.json
 
 
-The `mappings.json` output file is containing JSON 
-representations of the following:
+The `mappings.json` output file contains:
 
     "parent": libcasm.xtal.Structure
         The parent structure.
     "child": libcasm.xtal.Structure
         The child structure.
-    "options": casm.tools.map.search.StructureMappingSearchOptions
-        The structure mapping search options used.
     "mappings": list[libcasm.mapping.info.ScoredStructureMapping]
         The list of scored structure mappings found between a 
         superstructure of the parent and a superstructure of the 
         child.
+    "uuids": list[str]
+        A list of UUIDs for the mappings, one per mapping.
+
+The `options_history.json` output file is a JSON list with the 
+history of options used for the search. When `casm-map search` 
+is re-run with the `--merge` option new results are merged with 
+existing results and the options used are appended to the list 
+in this file.
 
 
-Notes
------
+## Mapping non-primitive structures
 
-1. Generally it is recommended to use primitive cells of the 
-   structures being mapped. The program will continue if the 
-   input structures are not primitive, but it will also print a 
-   notice and write files named `parent.primitive.json` and 
-   `child.primitive.json` containing the primitive structures. 
-   These can be used to re-run the search command with the 
-   primitive structures.
+For a general mapping search, it is recommended to use primitive 
+cells of the structures being mapped. The program will continue 
+if the input structures are not primitive, but it will also 
+print a notice and write files named `parent.primitive.json` and 
+`child.primitive.json` containing the primitive structures. 
+These can be used to re-run the search command with the 
+primitive structures.
 
 
-Parameters
-----------
+## Mapping relaxations from known starting structures
+
+When mapping a relaxed structure (child) from a known starting 
+structure (parent superstructure), the `--parent-superstructure` 
+option can be used to specify a file containing the parent 
+superstructure and skip searching over superstructures and 
+lattice reorientations. The deformation gradient is still 
+calculated and atom mapping is still performed. The specified
+file must be a valid structure file, but only the lattice is 
+actually used.
+
+## Mapping relaxations with fixed atoms
+
+The `--forced-on` option can be used to constrain the atom
+mapping search and force the mapping of specific atoms from
+the child structure to specific atoms in the parent structure.
+
+By default, mean displacements are removed from the atom 
+mappings. For relaxations where some atom positions are fixed, 
+it is usually preferable to suppress this with the
+`--no-remove-mean-displacement` option.
+
+
+## Parameters
 
 Total mapping options:
 
---child-max-supercell-size: Optional[int]=None
-    The maximum supercell size of the child to search over, in 
-    multiples of the input child structure. By default, the 
-    maximum supercell size is set based on the least common 
-    multiple of the number of atoms in the child and parent 
-    structures.
---child-min-supercell-size: int=1
-    The minimum supercell size of the child to search over, in 
-    multiples of the input child structure.
+--max-n-atoms: Optional[int]=None
+    The maximum number of atoms in superstructures to include
+    in the search. By default, the least common multiple of 
+    the number of atoms in the child and parent structures is
+    used.
+--min-n-atoms: int=1
+    The minimum number of atoms in superstructures to include
+    in the search.
 --min-total-cost: float=0.0
     Only mappings with a total cost greater than or equal to 
     this value are included in the final results.
---max-total-cost: float=1e20
+--max-total-cost: float=0.3
     Only mappings with a total cost less than or equal to this 
-    value are included in the final results.
+    value are included in the final results. 
 --k-best: int=100
     Keep the `k_best` mappings with lowest total cost that also 
     satisfy the min/max total cost criteria. Approximate ties 
@@ -116,17 +138,32 @@ Total mapping options:
     The fraction of the total cost that is due to the lattice 
     mapping cost. The remaining fraction is due to the atom 
     mapping cost.
+--iso-cost: bool=False
+    If given, use isotropic strain and displacement costs for
+    the lattice and atom mapping costs, respectively. If not
+    given, use symmetry-breaking strain and displacement costs.
+    To set separately, use `--iso-strain-cost` or 
+    `--iso-disp-cost`.
+--no-remove-mean-displacement: bool=False
+    If given, do not remove the mean displacement from the 
+    structure mappings. By default, the mean displacement is
+    removed from the structure mappings.
+--parent-superstructure: Optional[pathlib.Path]=None
+    A file containing the parent superstructure. If given, skip 
+    searching over superstructures and lattice reorientations. 
+    The deformation gradient is still calculated and atom 
+    mapping is still performed. The specified file must be a 
+    valid structure file, but only the lattice is actually used.
 
 Lattice mapping options:
 
---lattice-cost-method: str="symmetry_breaking_strain_cost"
-    Selects the method used to calculate the lattice mapping 
-    cost. One of "isotropic_strain_cost" or 
-    "symmetry_breaking_strain_cost".
+--iso-strain-cost: bool=False
+    If given, use the isotropic strain cost for the lattice 
+    mapping cost.
 --min-lattice-cost: float=0.0
     Only lattice mappings with a lattice cost greater than or 
     equal to this value are used to find structure mappings.
---max-lattice-cost: float=1e20
+--max-lattice-cost: float=0.6
     Only lattice mappings with a lattice cost less than or equal
     to this value are used to find structure mappings.
 --lattice-k-best: int=10
@@ -144,10 +181,31 @@ Lattice mapping options:
 
 Atom mapping options:
 
---atom-cost-method: str="symmetry_breaking_disp_cost"
-    Selects the method used to calculate the atom mapping cost. 
-    One of "isotropic_disp_cost" or 
-    "symmetry_breaking_disp_cost".
+--iso-disp-cost: bool=False
+    If given, use the isotropic displacement cost method for 
+    the atom mapping cost.
+--forced-on: Optional[list[int]]=None
+    If given, specifies pairs of (parent atom index, child atom
+    index) that must be mapped. Indices start from 0. This is 
+    used to force specific atom mappings in the search. This
+    argument can be given multiple times as pairs, or as a
+    single list. For example, `--forced-on 0 0 --forced-on 2 3` 
+    is equivalent to `--forced-on 0 0 2 3`, and specifies that
+    the first atom in the child structure must be mapped to
+    the first atom in the parent structure, and the fourth atom
+    in the child structure must be mapped to the third atom
+    in the parent structure.
+--forced-off: Optional[list[int]]=None
+    If given, specifies pairs of (parent atom index, child atom
+    index) that must not be mapped. Indices start from 0. This is 
+    used to suppress specific atom mappings in the search. This
+    argument can be given multiple times as pairs, or as a
+    single list. For example, `--forced-on 0 0 --forced-on 2 3` 
+    is equivalent to `--forced-on 0 0 2 3`, and specifies that
+    the first atom in the child structure must not be mapped to
+    the first atom in the parent structure, and the fourth atom
+    in the child structure must not be mapped to the third atom
+    in the parent structure.
     
 Deduplication options:
 
@@ -166,21 +224,41 @@ Input options:
     recognized by `ase.io.read` if ASE is installed.
 --parent-format: Optional[str]=None
     Same as `--format`, but overrides it to specify the format 
-    for reading the parent structure file.
+    for reading the parent structure file. Also used for 
+    the `--parent-superstructure` option.
 --child-format: Optional[str]=None
     Same as `--format`, but overrides it to specify the format 
     for reading the child structure file.
+--options: Optional[pathlib.Path]=None
+    Path to a JSON file containing options to use instead of
+    reading them from command line arguments. See (TODO) for
+    the format of the options file.
     
 Output options:
 
 --results-dir: str="results"
     Directory where results are written. A new directory will be 
     created. If the directory already exists, the program exits 
-    with an error.
+    with an error unless --merge is used.
+--merge: bool=False
+    If given, read existing results and merge new results. If 
+    not given, the program will exit with an error if the 
+    results directory already exists.
+
+Additional options:
+
+--next: bool=False
+    Shortcut which reads the last used options from the results
+    directory (if results exist) and increases `--max-n-atoms`
+    and `--min-n-atoms` to the next greatest common multiple of 
+    the number of atoms in the child and parent structures while 
+    keeping all other options the same. New results are merged 
+    with existing results. If no results exist, only the least 
+    common multiple of the number of atoms in the child and
+    parent structures is searched.
     
 
-Citing
-------
+## Citing
 
 A suggested way to cite this program is as follows:
 
@@ -188,8 +266,7 @@ A suggested way to cite this program is as follows:
 using the method of Thomas et al. [2] implemented in CASM [3]."
 
 
-References
-----------
+## References
 
 [1] B. Puchala, J. Thomas, and A. Van der Ven, "casm-map...".
 [2] J. C. Thomas, A. R. Natarajan, and A. Van der Ven, Comparing 
@@ -230,6 +307,9 @@ def get_child_format(args):
 
 def run_search(args):
 
+    from casm.tools.shared.io import read_structure, write_structure
+    from casm.tools.shared.json_io import read_required
+
     if args.desc:
         print(search_desc)
         return 0
@@ -254,37 +334,73 @@ def run_search(args):
         format=None,
     )
 
+    parent_superlattice = None
+    if args.parent_superstructure is not None:
+        parent_superstructure = read_structure(
+            path=args.parent_superstructure,
+            format=get_parent_format(args),
+        )
+        print("Parent superstructure:")
+        print(parent_superstructure)
+        print()
+        write_structure(
+            casm_structure=parent_superstructure,
+            path=pathlib.Path("parent_superstructure.xyz"),
+            format=None,
+        )
+        parent_superlattice = parent_superstructure.lattice()
+
     from casm.tools.map import (
         StructureMappingSearch,
         StructureMappingSearchOptions,
     )
 
-    opt = StructureMappingSearchOptions(
-        child_max_supercell_size=args.child_max_supercell_size,
-        child_min_supercell_size=args.child_min_supercell_size,
-        search_min_cost=args.min_total_cost,
-        search_max_cost=args.max_total_cost,
-        search_k_best=args.k_best,
-        lattice_cost_weight=args.lattice_cost_weight,
-        cost_tol=args.cost_tol,
-        lattice_mapping_min_cost=args.min_lattice_cost,
-        lattice_mapping_max_cost=args.max_lattice_cost,
-        lattice_mapping_k_best=args.lattice_k_best,
-        lattice_mapping_reorientation_range=args.lattice_reorientation_range,
-        lattice_mapping_cost_method=args.lattice_cost_method,
-        atom_mapping_cost_method=args.atom_cost_method,
-        deduplication_interpolation_factors=args.dedup_interp_factors,
-    )
+    if args.options is not None:
+        data = read_required(args.options)
+        opt = StructureMappingSearchOptions.from_dict(data)
+    else:
+
+        lattice_mapping_cost_method = "symmetry_breaking_strain_cost"
+        atom_mapping_cost_method = "symmetry_breaking_disp_cost"
+        if args.iso_cost:
+            lattice_mapping_cost_method = "isotropic_strain_cost"
+            atom_mapping_cost_method = "isotropic_disp_cost"
+        if args.iso_strain_cost:
+            lattice_mapping_cost_method = "isotropic_strain_cost"
+        if args.iso_disp_cost:
+            atom_mapping_cost_method = "isotropic_disp_cost"
+
+        opt = StructureMappingSearchOptions(
+            max_n_atoms=args.max_n_atoms,
+            min_n_atoms=args.min_n_atoms,
+            child_transformation_matrix_to_super_list=None,
+            parent_transformation_matrix_to_super_list=None,
+            total_min_cost=args.min_total_cost,
+            total_max_cost=args.max_total_cost,
+            total_k_best=args.k_best,
+            no_remove_mean_displacement=args.no_remove_mean_displacement,
+            parent_superlattice=parent_superlattice,
+            lattice_cost_weight=args.lattice_cost_weight,
+            cost_tol=args.cost_tol,
+            lattice_mapping_min_cost=args.min_lattice_cost,
+            lattice_mapping_max_cost=args.max_lattice_cost,
+            lattice_mapping_k_best=args.lattice_k_best,
+            lattice_mapping_reorientation_range=args.lattice_reorientation_range,
+            lattice_mapping_cost_method=lattice_mapping_cost_method,
+            atom_mapping_cost_method=atom_mapping_cost_method,
+            deduplication_interpolation_factors=args.dedup_interp_factors,
+        )
 
     import sys
 
     import libcasm.xtal as xtal
 
+    print("Options:")
     print(xtal.pretty_json(opt.to_dict()))
     sys.stdout.flush()
 
     f = StructureMappingSearch(opt=opt)
-    code = f(parent=parent, child=child, results_dir=args.results_dir)
+    code = f(parent=parent, child=child, results_dir=args.results_dir, merge=args.merge)
 
     return code
 
@@ -305,30 +421,30 @@ def make_search_parser(m):
     ### Total mapping options
     total = search.add_argument_group("Total mapping options")
     total.add_argument(
-        "--child-max-supercell-size",
+        "--min-n-atoms",
+        type=int,
+        default=1,
+        help="Minimum number of atoms in superstructures (default=1).",
+    )
+    total.add_argument(
+        "--max-n-atoms",
         type=int,
         help=(
-            "Maximum child supercell size "
-            "(default= determine from lcm of parent/child )."
+            "Maximum number of atoms in superstructures "
+            "(default= lcm of parent/child )."
         ),
     )
     total.add_argument(
-        "--child-min-supercell-size",
-        type=int,
-        default=1,
-        help=("Minimum child supercell size (default=1)."),
-    )
-    total.add_argument(
         "--min-total-cost",
-        type=int,
+        type=float,
         default=0.0,
         help="Minimum total cost (default=0.0).",
     )
     total.add_argument(
         "--max-total-cost",
-        type=int,
-        default=1e20,
-        help="Maximum total cost (default=1e20).",
+        type=float,
+        default=0.3,
+        help="Maximum total cost (default=0.3).",
     )
     total.add_argument(
         "--k-best",
@@ -348,20 +464,45 @@ def make_search_parser(m):
         default=0.5,
         help=("Fraction of total cost due to lattice cost (default=0.5)."),
     )
+    total.add_argument(
+        "--iso-cost",
+        action="store_true",
+        default=False,
+        help=(
+            "Use isotropic strain and disp costs "
+            "(default= use symmetry-breaking strain and disp costs)."
+        ),
+    )
+    total.add_argument(
+        "--no-remove-mean-displacement",
+        action="store_true",
+        default=False,
+        help=(
+            "Do not remove the mean displacement from the structure mappings. "
+            "(default= remove mean displacement )."
+        ),
+    )
+    total.add_argument(
+        "--parent-superstructure",
+        metavar="PARENT_SUPERSTRUCTURE",
+        type=pathlib.Path,
+        default=None,
+        help=(
+            "Parent superstructure file. Fixes the parent superstructure using "
+            "the lattice of the specified structure file "
+            "(default= search over parent superstructures )."
+        ),
+    )
 
     ### Lattice mapping options
     latmap = search.add_argument_group("Lattice mapping options")
     latmap.add_argument(
-        "--lattice-cost-method",
-        type=str,
-        default="symmetry_breaking_strain_cost",
-        choices=[
-            "isotropic_strain_cost",
-            "symmetry_breaking_strain_cost",
-        ],
+        "--iso-strain-cost",
+        action="store_true",
+        default=False,
         help=(
-            "Method to use for calculating the lattice mapping cost. "
-            "(default=symmetry_breaking_strain_cost)."
+            "Use isotropic strain cost for the lattice mapping cost. "
+            "(default= use symmetry-breaking strain cost )."
         ),
     )
     latmap.add_argument(
@@ -392,17 +533,27 @@ def make_search_parser(m):
     ### Atom mapping options
     atommap = search.add_argument_group("Atom mapping options")
     atommap.add_argument(
-        "--atom-cost-method",
-        type=str,
-        default="symmetry_breaking_disp_cost",
-        choices=[
-            "isotropic_disp_cost",
-            "symmetry_breaking_disp_cost",
-        ],
+        "--iso-disp-cost",
+        action="store_true",
+        default=False,
         help=(
-            "Method to use for calculating the atom mapping cost. "
-            "(default=symmetry_breaking_disp_cost)."
+            "Use isotropic disp cost for the atom mapping cost. "
+            "(default= use symmetry-breaking disp cost )."
         ),
+    )
+    atommap.add_argument(
+        "--forced-on",
+        type=int,
+        nargs="*",
+        default=None,
+        help=("Force specific atom mappings."),
+    )
+    atommap.add_argument(
+        "--forced-off",
+        type=int,
+        nargs="*",
+        default=None,
+        help=("Suppress specific atom mappings."),
     )
 
     ### Deduplication options
@@ -435,6 +586,15 @@ def make_search_parser(m):
         default=None,
         help="Child structure file format (overrides --format).",
     )
+    input.add_argument(
+        "--options",
+        type=pathlib.Path,
+        default=None,
+        help=(
+            "JSON file containing options to use instead of "
+            "reading them from command line arguments."
+        ),
+    )
 
     ### Output options
     output = search.add_argument_group("Output options")
@@ -444,12 +604,24 @@ def make_search_parser(m):
         default=pathlib.Path("results"),
         help="Directory where results are written (default=results).",
     )
-    # output.add_argument(
-    #     "--output-format",
-    #     type=str,
-    #     default=None,
-    #     help="Format for writing structure files (default= child format).",
-    # )
+    output.add_argument(
+        "--merge",
+        action="store_true",
+        default=False,
+        help="Merge new results into existing results.",
+    )
+
+    ### Additional options
+    additional = search.add_argument_group("Additional options")
+    additional.add_argument(
+        "--next",
+        type=str,
+        default=None,
+        help=(
+            "Expand previous search to include next greatest common multiple number "
+            "of atoms."
+        ),
+    )
 
     ### Other options:
     other = search.add_argument_group("Other options")

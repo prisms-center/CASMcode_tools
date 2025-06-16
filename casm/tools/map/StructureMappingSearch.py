@@ -1,6 +1,7 @@
 import math
 import pathlib
 import sys
+import uuid
 from typing import Optional
 
 import numpy as np
@@ -12,23 +13,43 @@ import libcasm.mapping.mapsearch as mapsearch
 import libcasm.mapping.methods as mapmethods
 import libcasm.xtal as xtal
 from casm.tools.shared.json_io import (
+    read_optional,
+    read_required,
     safe_dump,
 )
 
 from .methods import (
+    chain_is_in_orbit,
+    make_chain_orbit,
     make_child_transformation_matrix_to_super,
+    make_parent_supercell_info,
+    make_primitive_chain,
+    make_primitive_chain_orbit,
+    parent_supercell_size,
 )
+
+
+def ceildiv(a, b):
+    return -(a // -b)
+
+
+def floordiv(a, b):
+    return a // b
 
 
 class StructureMappingSearchOptions:
 
     def __init__(
         self,
-        child_max_supercell_size: Optional[int] = None,
-        child_min_supercell_size: int = 1,
-        search_min_cost: float = 0.0,
-        search_max_cost: float = 1e20,
-        search_k_best: int = 1,
+        max_n_atoms: Optional[int] = None,
+        min_n_atoms: int = 1,
+        child_transformation_matrix_to_super_list: Optional[list[np.ndarray]] = None,
+        parent_transformation_matrix_to_super_list: Optional[list[np.ndarray]] = None,
+        total_min_cost: float = 0.0,
+        total_max_cost: float = 0.3,
+        total_k_best: int = 1,
+        no_remove_mean_displacement: bool = False,
+        parent_superlattice: Optional[xtal.Lattice] = None,
         lattice_mapping_min_cost: Optional[float] = 0.0,
         lattice_mapping_max_cost: Optional[float] = 1e20,
         lattice_mapping_k_best: Optional[int] = 10,
@@ -43,30 +64,37 @@ class StructureMappingSearchOptions:
 
         Parameters
         ----------
-        child_max_supercell_size : int
-            The maximum supercell size of the child to search over. If None, the
-            maximum supercell size is set based on the least common multiple of the
-            number of atoms in the child and parent structures.
-        child_min_supercell_size : int = 1
-            The minimum supercell size of the child to search over. If None, the
-            minimum supercell size is set to 1.
-        child_scel_range : Optional[tuple[int, int]] = None
-            Defines the range of supercell sizes for the child structure which are
-            included in the search. If None, the range is set to only include the
-            child superstructure which has the least common multiple of the number of
-            atoms in the child and parent structures.
-        search_min_cost : float = 0.0
+        max_n_atoms : Optional[int] = None
+            The maximum number of atoms in the superstructures that should be included
+            in the search. If None, the least common multiple of the number of atoms
+            in the child and parent structures.
+        min_n_atoms : int = 1
+            The minimum number of atoms in the superstructures that should be included
+            in the search.
+        child_transformation_matrix_to_super_list : Optional[list[np.ndarray]] = None
+            If provided, overrides the `min_n_atoms` and `max_n_atoms` options to
+            directly specify the transformation matrices to use for the child
+            superstructures.
+        parent_transformation_matrix_to_super_list : Optional[list[np.ndarray]] = None
+            If provided, only use the specified transformation matrices to create
+            parent superstructures. If None, the parent superstructures are
+            enumerated.
+        total_min_cost : float = 0.0
             The minimum total cost mapping to include in search results.
-        search_max_cost : float = 0.5
+        total_max_cost : float = 0.3
             The maximum total cost mapping to include in search results.
-        search_k_best : int = 1
+        total_k_best : int = 1
             Keep the `k_best` mappings with lowest total cost that also
             satisfy the min/max cost criteria. Approximate ties with the
             current `k_best`-ranked result are also kept.
+        no_remove_mean_displacement : bool = False
+            If True, do not remove the mean displacement from the atom mapping.
+        parent_superlattice : Optional[xtal.Lattice] = None
+            If not None, the parent superlattice is fixed to this lattice.
         lattice_mapping_min_cost : float = 0.0
             Keep lattice mappings with cost >= min_cost. Used when
             `map_lattices_with_reorientation` is True.
-        lattice_mapping_max_cost : float = 0.5
+        lattice_mapping_max_cost : float = 1e20
             Keep results with cost <= max_cost. Used when
             `map_lattices_with_reorientation` is True.
         lattice_mapping_k_best : int = 10
@@ -96,11 +124,20 @@ class StructureMappingSearchOptions:
             ``[0.5, 1.0]`` is used.
 
         """
-        self.child_min_supercell_size = child_min_supercell_size
-        self.child_max_supercell_size = child_max_supercell_size
-        self.search_min_cost = search_min_cost
-        self.search_max_cost = search_max_cost
-        self.search_k_best = search_k_best
+        self.min_n_atoms = min_n_atoms
+        self.max_n_atoms = max_n_atoms
+        self.child_transformation_matrix_to_super_list = (
+            child_transformation_matrix_to_super_list
+        )
+        self.parent_transformation_matrix_to_super_list = (
+            parent_transformation_matrix_to_super_list
+        )
+
+        self.total_min_cost = total_min_cost
+        self.total_max_cost = total_max_cost
+        self.total_k_best = total_k_best
+        self.no_remove_mean_displacement = no_remove_mean_displacement
+        self.parent_superlattice = parent_superlattice
         self.lattice_mapping_min_cost = lattice_mapping_min_cost
         self.lattice_mapping_max_cost = lattice_mapping_max_cost
         self.lattice_mapping_k_best = lattice_mapping_k_best
@@ -117,11 +154,27 @@ class StructureMappingSearchOptions:
 
     def to_dict(self):
         return {
-            "child_min_supercell_size": self.child_min_supercell_size,
-            "child_max_supercell_size": self.child_max_supercell_size,
-            "search_min_cost": self.search_min_cost,
-            "search_max_cost": self.search_max_cost,
-            "search_k_best": self.search_k_best,
+            "min_n_atoms": self.min_n_atoms,
+            "max_n_atoms": self.max_n_atoms,
+            "child_transformation_matrix_to_super_list": (
+                [x.tolist() for x in self.child_transformation_matrix_to_super_list]
+                if self.child_transformation_matrix_to_super_list is not None
+                else None
+            ),
+            "parent_transformation_matrix_to_super_list": (
+                [x.tolist() for x in self.parent_transformation_matrix_to_super_list]
+                if self.parent_transformation_matrix_to_super_list is not None
+                else None
+            ),
+            "total_min_cost": self.total_min_cost,
+            "total_max_cost": self.total_max_cost,
+            "total_k_best": self.total_k_best,
+            "no_remove_mean_displacement": self.no_remove_mean_displacement,
+            "parent_superlattice": (
+                self.parent_superlattice.to_dict()
+                if self.parent_superlattice is not None
+                else None
+            ),
             "lattice_mapping_min_cost": self.lattice_mapping_min_cost,
             "lattice_mapping_max_cost": self.lattice_mapping_max_cost,
             "lattice_mapping_k_best": self.lattice_mapping_k_best,
@@ -136,11 +189,30 @@ class StructureMappingSearchOptions:
     @staticmethod
     def from_dict(data):
         return StructureMappingSearchOptions(
-            child_min_supercell_size=data["child_min_supercell_size"],
-            child_max_supercell_size=data["child_max_supercell_size"],
-            search_min_cost=data["search_min_cost"],
-            search_max_cost=data["search_max_cost"],
-            search_k_best=data["search_k_best"],
+            max_n_atoms=data["max_n_atoms"],
+            min_n_atoms=data["min_n_atoms"],
+            child_transformation_matrix_to_super_list=(
+                [np.array(x) for x in data["child_transformation_matrix_to_super_list"]]
+                if data["child_transformation_matrix_to_super_list"] is not None
+                else None
+            ),
+            parent_transformation_matrix_to_super_list=(
+                [
+                    np.array(x)
+                    for x in data["parent_transformation_matrix_to_super_list"]
+                ]
+                if data["parent_transformation_matrix_to_super_list"] is not None
+                else None
+            ),
+            total_min_cost=data["total_min_cost"],
+            total_max_cost=data["total_max_cost"],
+            total_k_best=data["total_k_best"],
+            no_remove_mean_displacement=data["no_remove_mean_displacement"],
+            parent_superlattice=(
+                xtal.Lattice.from_dict(data["parent_superlattice"])
+                if data["parent_superlattice"] is not None
+                else None
+            ),
             lattice_mapping_min_cost=data["lattice_mapping_min_cost"],
             lattice_mapping_max_cost=data["lattice_mapping_max_cost"],
             lattice_mapping_k_best=data["lattice_mapping_k_best"],
@@ -198,9 +270,79 @@ def results_dir_exists_error(results_dir: pathlib.Path) -> None:
 #                                                                              #
 # A directory already exists at the specified path.                            #
 #                                                                              #
+# To merge new results, use --merge. Otherwise, delete the existing directory  #
+# or specify a new one.                                                        #
 
 --results-dir={results_dir}
 
+# Stopping...                                                                  #
+################################################################################
+"""
+    print(error)
+    sys.exit(1)
+
+
+def different_parent_error(results_dir: pathlib.Path) -> None:
+    """When merging, print an error message if the parent has changed."""
+
+    error = """
+################################################################################
+# Error: parent structure has changed                                          #
+#                                                                              #
+# When using the --merge option, the parent structure must remain the same.    #
+#                                                                              #
+# Stopping...                                                                  #
+################################################################################
+"""
+    print(error)
+    sys.exit(1)
+
+
+def different_child_error(results_dir: pathlib.Path) -> None:
+    """When merging, print an error message if the child has changed."""
+
+    error = """
+################################################################################
+# Error: child structure has changed                                           #
+#                                                                              #
+# When using the --merge option, the child structure must remain the same.     #
+#                                                                              #
+# Stopping...                                                                  #
+################################################################################
+"""
+    print(error)
+    sys.exit(1)
+
+
+def different_lattice_mapping_cost_method_error() -> None:
+    """When merging, print an error message if the lattice mapping cost method has
+    changed."""
+
+    error = """
+################################################################################
+# Error: lattice mapping cost method has changed                               #
+#                                                                              #
+# When using the --merge option, the lattice mapping cost method must remain   #
+# the same.                                                                    #
+#                                                                              #
+# Stopping...                                                                  #
+################################################################################
+"""
+    print(error)
+    sys.exit(1)
+
+
+def different_atom_mapping_cost_method_error() -> None:
+    """When merging, print an error message if the atom mapping cost method has
+    changed."""
+
+    error = """
+################################################################################
+# Error: atom mapping cost method has changed                                  #
+#                                                                              #
+# When using the --merge option, the atom mapping cost method must remain      #
+# the same.                                                                    #
+#                                                                              #
 # Stopping...                                                                  #
 ################################################################################
 """
@@ -242,17 +384,17 @@ def primitive_child_notice() -> None:
     sys.stdout.flush()
 
 
-def invalid_child_min_supercell_size_error(child_min_supercell_size: int):
-    """Print an error message for invalid child minimum supercell size."""
+def invalid_min_n_atoms_error(min_n_atoms: int):
+    """Print an error message for invalid min_n_atoms."""
 
     error = f"""
 ################################################################################
-# Error: Invalid child minimum supercell size                                  #
+# Error: Invalid min_n_atoms                                                   #
 #                                                                              #
-# The minimum supercell size for the child structure must be at least 1.       #
+# The value of min_n_atoms must be at least 1.                                 #
 #                                                                              #
 
---child-min-supercell-size={child_min_supercell_size}
+--min-n-atoms={min_n_atoms}
 
 # Stopping...                                                                  #
 ################################################################################
@@ -261,47 +403,22 @@ def invalid_child_min_supercell_size_error(child_min_supercell_size: int):
     sys.exit(1)
 
 
-def invalid_child_max_supercell_size_error(
-    child_min_supercell_size: int,
-    child_max_supercell_size: int,
+def invalid_max_n_atoms_error(
+    min_n_atoms: int,
+    max_n_atoms: int,
     computed_msg: str,
 ):
-    """Print an error message for invalid child maximum supercell size."""
+    """Print an error message for invalid max_n_atoms."""
 
     error = f"""
 ################################################################################
-# Error: Invalid child maximum supercell size                                  #
+# Error: Invalid max_n_atoms                                                   #
 #                                                                              #
-# The maximum supercell size for the child structure must be greater than or   #
+# The value of max_n_atoms must be greater than or equalt to min_n_atoms.      #
 # equal to the minimum.                                                        #
 
---child-min-supercell-size={child_min_supercell_size}
---child-max-supercell-size={child_max_supercell_size} {computed_msg}
-
-# Stopping...                                                                  #
-################################################################################
-"""
-    print(error)
-    sys.exit(1)
-
-
-def no_valid_parent_supercell_size_error(
-    child_min_supercell_size: int,
-    child_max_supercell_size: int,
-):
-    """Print an error message for no valid parent supercell sizes."""
-
-    error = f"""
-################################################################################
-# Error: No valid parent supercell size                                        #
-#                                                                              #
-# In the range of child supercell sizes specified, there are no parent         #
-# supercells with a matching number of atoms. To automatically determine the   #
-# child supercell size from the lcm of the number of atoms in the parent and   #
-# child structures, do not set the --child-max-supercell-size option.          #
-
---child-min-supercell-size={child_min_supercell_size}
---child-max-supercell-size={child_max_supercell_size} 
+--min-n-atoms={min_n_atoms}
+--max-n-atoms={max_n_atoms} {computed_msg}
 
 # Stopping...                                                                  #
 ################################################################################
@@ -405,7 +522,8 @@ class StructureMappingSearch:
 
     Constraints that can be applied to the search:
 
-    - min / max child supercell size
+    - min / max number of atoms
+    - parent / child supercells used
     - min / max total cost of the mapping
     - min / max cost of the lattice mapping
     - lattice mapping reorientation range
@@ -428,9 +546,7 @@ class StructureMappingSearch:
         self.opt: StructureMappingSearchOptions = opt
         """StructureMappingSearchOptions: Options for the search."""
 
-    def _get_child_max_supercell_size(
-        self, parent: xtal.Structure, child: xtal.Structure
-    ):
+    def _get_max_n_atoms(self, parent: xtal.Structure, child: xtal.Structure):
         """Get the maximum supercell size of the child structure based on the parent
         structure.
 
@@ -438,32 +554,35 @@ class StructureMappingSearch:
         the least common multiple of the number of atoms in the child and parent
         structures.
         """
-        if self.opt.child_max_supercell_size is None:
-            n_atoms_parent = len(parent.atom_type())
-            n_atoms_child = len(child.atom_type())
-            return math.lcm(n_atoms_parent, n_atoms_child) // n_atoms_child
-        return self.opt.child_max_supercell_size
+        if self.opt.max_n_atoms is not None:
+            return self.opt.max_n_atoms
 
-    def _get_parent_vol(
+        n_atoms_parent = len(parent.atom_type())
+        n_atoms_child = len(child.atom_type())
+        return math.lcm(n_atoms_parent, n_atoms_child)
+
+    def _get_child_to_parent_vol(
         self,
         parent: xtal.Structure,
         child: xtal.Structure,
     ):
-        child_min_supercell_size = self.opt.child_min_supercell_size
-        child_max_supercell_size = self._get_child_max_supercell_size(parent, child)
+        max_n_atoms = self._get_max_n_atoms(parent, child)
         child_n_atoms = len(child.atom_type())
         parent_n_atoms = len(parent.atom_type())
 
-        parent_vol = {}
-        for child_vol in range(child_min_supercell_size, child_max_supercell_size + 1):
+        child_to_parent_vol = {}
+        child_vol = 1
+        while child_vol * child_n_atoms <= max_n_atoms:
             child_superstructure_n_atoms = child_n_atoms * child_vol
             _vol = child_superstructure_n_atoms / parent_n_atoms
 
             # if parent_vol is integer, then it is a valid supercell size:
             if _vol.is_integer():
-                parent_vol[child_vol] = int(_vol)
+                child_to_parent_vol[child_vol] = int(_vol)
 
-        return parent_vol
+            child_vol += 1
+
+        return child_to_parent_vol
 
     def _enable_symmetry_breaking_atom_cost(self):
         """Check if symmetry breaking atom cost is enabled based on the options."""
@@ -523,55 +642,62 @@ class StructureMappingSearch:
             print("Stopping")
             sys.exit(1)
 
-        # Print notice if parent or child are not primitive, and write the
-        # primitive structures
-        primitive_parent = xtal.make_primitive_structure(parent)
-        if len(primitive_parent.atom_type()) != len(parent.atom_type()):
-            safe_dump(
-                xtal.pretty_json(primitive_parent.to_dict()),
-                path="parent.primitive.json",
-                force=True,
-                quiet=True,
-            )
-            primitive_parent_notice()
+        if self.opt.parent_superlattice is not None:
+            # TODO: --parent-superstructure
+            raise Exception("--parent-superstructure is not yet supported")
 
-        primitive_child = xtal.make_primitive_structure(child)
-        if len(primitive_child.atom_type()) != len(child.atom_type()):
-            safe_dump(
-                xtal.pretty_json(primitive_child.to_dict()),
-                path="child.primitive.json",
-                force=True,
-                quiet=True,
-            )
-            primitive_child_notice()
+            if self.opt.child_transformation_matrix_to_super_list is not None:
+                raise Exception(
+                    "parent_superlattice is not compatible with "
+                    "child_transformation_matrix_to_super_list"
+                )
 
-        # Validate the child supercell size range
-        if self.opt.child_min_supercell_size < 1:
-            print("Error: --min-child-supercell-size must be at least 1")
-            print(f"- --min-child-supercell-size={self.opt.child_min_supercell_size}")
-            print("Stopping")
-            sys.exit(1)
+            if self.opt.parent_transformation_matrix_to_super_list is not None:
+                raise Exception(
+                    "parent_superlattice is not compatible with "
+                    "parent_transformation_matrix_to_super_list"
+                )
 
-        _child_max_supercell_size = self._get_child_max_supercell_size(parent, child)
-        if _child_max_supercell_size < self.opt.child_min_supercell_size:
-            computed_msg = (
-                "(computed from lcm of atom counts)"
-                if self.opt.child_max_supercell_size is None
-                else ""
-            )
-            invalid_child_max_supercell_size_error(
-                child_min_supercell_size=self.opt.child_min_supercell_size,
-                child_max_supercell_size=_child_max_supercell_size,
-                computed_msg=computed_msg,
-            )
+        else:
+            # Print notice if parent or child are not primitive, and write the
+            # primitive structures
+            primitive_parent = xtal.make_primitive_structure(parent)
+            if len(primitive_parent.atom_type()) != len(parent.atom_type()):
+                safe_dump(
+                    xtal.pretty_json(primitive_parent.to_dict()),
+                    path="parent.primitive.json",
+                    force=True,
+                    quiet=True,
+                )
+                primitive_parent_notice()
 
-        # Validate the parent supercell size
-        parent_vol = self._get_parent_vol(parent, child)
-        if len(parent_vol) == 0:
-            no_valid_parent_supercell_size_error(
-                child_min_supercell_size=self.opt.child_min_supercell_size,
-                child_max_supercell_size=_child_max_supercell_size,
-            )
+            primitive_child = xtal.make_primitive_structure(child)
+            if len(primitive_child.atom_type()) != len(child.atom_type()):
+                safe_dump(
+                    xtal.pretty_json(primitive_child.to_dict()),
+                    path="child.primitive.json",
+                    force=True,
+                    quiet=True,
+                )
+                primitive_child_notice()
+
+        if self.opt.child_transformation_matrix_to_super_list is None:
+            # Validate the min/max number of atoms
+            if self.opt.min_n_atoms < 1:
+                invalid_min_n_atoms_error(min_n_atoms=self.opt.min_n_atoms)
+
+            _max_n_atoms = self._get_max_n_atoms(parent, child)
+            if _max_n_atoms < self.opt.min_n_atoms:
+                computed_msg = (
+                    "(computed from lcm of atom counts)"
+                    if self.opt.max_n_atoms is None
+                    else ""
+                )
+                invalid_max_n_atoms_error(
+                    min_n_atoms=self.opt.min_n_atoms,
+                    max_n_atoms=_max_n_atoms,
+                    computed_msg=computed_msg,
+                )
 
         # Validate lattice mapping cost method
         if self.opt.lattice_mapping_cost_method not in [
@@ -596,12 +722,91 @@ class StructureMappingSearch:
         ):
             invalid_deduplication_interpolation_factors_error(dedup_factors)
 
+    def _make_T_pairs(
+        self,
+        parent: xtal.Structure,
+        child: xtal.Structure,
+        parent_prim: casmconfig.Prim,
+        min_n_atoms: int,
+        max_n_atoms: int,
+        child_T_list: Optional[list[np.ndarray]] = None,
+        parent_T_list: Optional[list[np.ndarray]] = None,
+    ):
+        # Results, list of (T_child, T_parent) pairs
+        T_pairs = []
+
+        # Parameters
+        child_crystal_point_group = xtal.make_structure_crystal_point_group(child)
+        child_n_atoms = len(child.atom_type())
+        child_to_parent_vol = self._get_child_to_parent_vol(
+            parent=parent,
+            child=child,
+        )
+
+        # If child_T_list is not provided, enumerate the child supercells
+        if child_T_list is None:
+            child_T_list = []
+
+            child_superlattices = xtal.enumerate_superlattices(
+                unit_lattice=child.lattice(),
+                point_group=child_crystal_point_group,
+                max_volume=floordiv(max_n_atoms, child_n_atoms),
+                min_volume=ceildiv(min_n_atoms, child_n_atoms),
+            )
+            for child_superlattice in child_superlattices:
+                child_T_list.append(
+                    xtal.make_transformation_matrix_to_super(
+                        unit_lattice=child.lattice(),
+                        superlattice=child_superlattice,
+                    )
+                )
+
+        # For each child superstructure...
+        for child_T in child_T_list:
+            child_vol = int(round(np.linalg.det(child_T)))
+
+            # If no valid parent volume, continue
+            if child_vol not in child_to_parent_vol:
+                continue
+            parent_vol = child_to_parent_vol[child_vol]
+
+            # Get the list of valid parent supercells
+            restricted_parent_T_list = []
+
+            # If parent_T_list is not provided, enumerate the parent supercells
+            if parent_T_list is None:
+                parent_superlattices = xtal.enumerate_superlattices(
+                    unit_lattice=parent.lattice(),
+                    point_group=parent_prim.crystal_point_group.elements,
+                    max_volume=parent_vol,
+                    min_volume=parent_vol,
+                )
+                for parent_superlattice in parent_superlattices:
+                    restricted_parent_T_list.append(
+                        xtal.make_transformation_matrix_to_super(
+                            unit_lattice=parent.lattice(),
+                            superlattice=parent_superlattice,
+                        )
+                    )
+
+            # If parent_T_list is provided, filter the parent supercells
+            else:
+                for parent_T in parent_T_list:
+                    if int(round(np.linalg.det(parent_T))) == parent_vol:
+                        restricted_parent_T_list.append(parent_T)
+
+            # Add the (child_T, parent_T) pairs
+            for parent_T in restricted_parent_T_list:
+                T_pairs.append((child_T, parent_T))
+
+        return T_pairs
+
     def __call__(
         self,
         parent: xtal.Structure,
         child: xtal.Structure,
         results_dir: pathlib.Path,
-        force: bool = False,
+        merge: bool = False,
     ):
         """Perform the structure mapping search.
 
@@ -614,22 +819,66 @@ class StructureMappingSearch:
         results_dir : pathlib.Path
             The directory to write the results to. If the directory already exists,
             the program exits with an error.
-
+        merge: bool = False
+            If True, merge the results with existing results in the directory. If False,
+            exit with error if the directory already exists.
         """
+        parent_prim = casmconfig.Prim(xtal.Prim.from_atom_coordinates(structure=parent))
+        self._supercell_set = casmconfig.SupercellSet(prim=parent_prim)
+
+        search_results = []
+        uuids = []
+        chain_orbits = []
+
         if results_dir.exists():
-            results_dir_exists_error(results_dir=results_dir)
-            sys.exit(1)
+            if merge is False:
+                results_dir_exists_error(results_dir=results_dir)
+                sys.exit(1)
+            else:
+                data = read_required(results_dir / "mappings.json")
+
+                # Validate same parent and child structures:
+                _last_parent = xtal.Structure.from_dict(data.get("parent"))
+                if not parent.is_equivalent_to(_last_parent):
+                    different_parent_error()
+                _last_child = xtal.Structure.from_dict(data.get("child"))
+                if not child.is_equivalent_to(_last_child):
+                    different_child_error()
+                search_results = [
+                    mapinfo.ScoredStructureMapping.from_dict(
+                        data=x, prim=parent_prim.xtal_prim
+                    )
+                    for x in data["mappings"]
+                ]
+                uuids = data.get("uuids", [])
+
+                options_data = read_required(results_dir / "options_history.json")
+                last_options = StructureMappingSearchOptions.from_dict(options_data[-1])
+
+                if (
+                    self.opt.lattice_mapping_cost_method
+                    != last_options.lattice_mapping_cost_method
+                ):
+                    different_lattice_mapping_cost_method_error()
+                if (
+                    self.opt.atom_mapping_cost_method
+                    != last_options.atom_mapping_cost_method
+                ):
+                    different_atom_mapping_cost_method_error()
 
         self.validate(parent, child)
 
         ## Parameters
-        _child_max_supercell_size = self._get_child_max_supercell_size(parent, child)
-        _child_min_supercell_size = self.opt.child_min_supercell_size
-        _parent_vol = self._get_parent_vol(parent, child)
+        _max_n_atoms = self._get_max_n_atoms(parent, child)
+        _min_n_atoms = self.opt.min_n_atoms
+        _child_T_list = self.opt.child_transformation_matrix_to_super_list
+        _parent_T_list = self.opt.parent_transformation_matrix_to_super_list
         _enable_symmetry_breaking_atom_cost = self._enable_symmetry_breaking_atom_cost()
-        _search_min_cost = self.opt.search_min_cost
-        _search_max_cost = self.opt.search_max_cost
-        _search_k_best = self.opt.search_k_best
+        _total_min_cost = self.opt.total_min_cost
+        _total_max_cost = self.opt.total_max_cost
+        _total_k_best = self.opt.total_k_best
+        _enable_remove_mean_displacement = not self.opt.no_remove_mean_displacement
+        _lattice_cost_weight = self.opt.lattice_cost_weight
         _lattice_mapping_min_cost = self.opt.lattice_mapping_min_cost
         _lattice_mapping_max_cost = self.opt.lattice_mapping_max_cost
         _lattice_mapping_cost_method = self.opt.lattice_mapping_cost_method
@@ -643,14 +892,11 @@ class StructureMappingSearch:
 
         ## Fixed parameters
         _infinity = 1e20
-        _enable_remove_mean_displacement = True
         _atom_to_site_cost_f = mapsearch.make_atom_to_site_cost
 
         ## Create a parent structure search data object.
-        prim = casmconfig.Prim(xtal.Prim.from_atom_coordinates(structure=parent))
-
         parent_search_data = mapsearch.PrimSearchData(
-            prim=prim.xtal_prim,
+            prim=parent_prim.xtal_prim,
             enable_symmetry_breaking_atom_cost=_enable_symmetry_breaking_atom_cost,
         )
         init_child_structure_data = mapsearch.StructureSearchData(
@@ -660,212 +906,351 @@ class StructureMappingSearch:
             override_structure_factor_group=None,
         )
 
-        # Create a MappingSearch object.
-        # This will hold a queue of possible mappings,
-        # sorted by cost, as we generate them.
-        search = mapsearch.MappingSearch(
-            min_cost=_search_min_cost,
-            max_cost=_search_max_cost,
-            k_best=_search_k_best,
-            atom_cost_f=_atom_cost_f,
-            total_cost_f=_total_cost_f,
-            atom_to_site_cost_f=_atom_to_site_cost_f,
-            enable_remove_mean_displacement=_enable_remove_mean_displacement,
-            infinity=_infinity,
-            cost_tol=_cost_tol,
+        # Get a list of (T_child, T_parent) pairs
+        T_pairs = self._make_T_pairs(
+            parent=parent,
+            child=child,
+            parent_prim=parent_prim,
+            min_n_atoms=_min_n_atoms,
+            max_n_atoms=_max_n_atoms,
+            child_T_list=_child_T_list,
+            parent_T_list=_parent_T_list,
         )
 
-        parent_crystal_point_group = xtal.make_structure_crystal_point_group(parent)
-        child_crystal_point_group = xtal.make_structure_crystal_point_group(child)
-        child_superlattices = xtal.enumerate_superlattices(
-            unit_lattice=child.lattice(),
-            point_group=child_crystal_point_group,
-            max_volume=_child_max_supercell_size,
-            min_volume=_child_min_supercell_size,
-        )
+        total = len(T_pairs)
+        print(f"Beginning search over {total} parent / child superstructure pairs...")
+        print()
+        print("Search results so far:")
+        print()
+        print()
+        sys.stdout.flush()
 
-        for i_child_superlattice, child_superlattice in enumerate(child_superlattices):
-            child_T = xtal.make_transformation_matrix_to_super(
-                unit_lattice=child.lattice(),
-                superlattice=child_superlattice,
-            )
+        last_child_T = None
+        child_structure_data = None
+
+        n_atoms = 0
+        if len(T_pairs):
+            # Get the number of atoms in the child structure
+            child_vol = int(round(np.linalg.det(T_pairs[0][0])))
+            child_n_atoms = len(child.atom_type())
+            n_atoms = child_n_atoms * child_vol
+        min_total_cost = 0.0
+        max_total_cost = 0.0
+
+        # with tqdm(
+        #     total=total,
+        #     desc="Searching",
+        #     unit="pair",
+        #     ncols=80,
+        # ) as pbar:
+
+        for i_pair, _pair in enumerate(T_pairs):
+
+            child_T, parent_T = _pair
+            if last_child_T is None or not np.allclose(child_T, last_child_T):
+                child_structure_data = mapsearch.make_superstructure_data(
+                    prim_structure_data=init_child_structure_data,
+                    transformation_matrix_to_super=child_T,
+                )
+
             child_vol = int(round(np.linalg.det(child_T)))
+            child_n_atoms = len(child.atom_type())
+            n_atoms = child_n_atoms * child_vol
 
-            # for each child, make lattice mapping solutions
-            child_structure_data = mapsearch.make_superstructure_data(
-                prim_structure_data=init_child_structure_data,
-                transformation_matrix_to_super=child_T,
+            # Create a MappingSearch object.
+            # This will hold a queue of possible mappings,
+            # sorted by cost, as we generate them.
+            search = mapsearch.MappingSearch(
+                min_cost=_total_min_cost,
+                max_cost=_total_max_cost,
+                k_best=_total_k_best,
+                atom_cost_f=_atom_cost_f,
+                total_cost_f=_total_cost_f,
+                atom_to_site_cost_f=_atom_to_site_cost_f,
+                enable_remove_mean_displacement=_enable_remove_mean_displacement,
+                infinity=_infinity,
+                cost_tol=_cost_tol,
             )
+
+            # parent_T = xtal.make_transformation_matrix_to_super(
+            #     unit_lattice=parent.lattice(),
+            #     superlattice=parent_superlattice,
+            # )
+            #
+            # print(
+            #     f"  - Parent supercell {i_parent_superlattice + 1}"
+            #     f"/{len(parent_superlattices)}... "
+            # )
+            # sys.stdout.flush()
+
+            # Might be able to tighten lattice max cost limit:
+            _curr_search_max = _total_max_cost
+            if len(search_results) >= _total_k_best:
+                _curr_search_max = search_results[-1].total_cost()
+
+            _curr_lattice_max = min(
+                _lattice_mapping_max_cost,
+                _curr_search_max / _lattice_cost_weight,
+            )
+
+            lattice_mappings = mapmethods.map_lattices(
+                lattice1=parent.lattice(),
+                lattice2=child_structure_data.lattice(),
+                transformation_matrix_to_super=parent_T,
+                lattice1_point_group=parent_search_data.prim_crystal_point_group(),
+                lattice2_point_group=child_structure_data.structure_crystal_point_group(),
+                min_cost=_lattice_mapping_min_cost,
+                max_cost=_curr_lattice_max,
+                cost_method=_lattice_mapping_cost_method,
+                k_best=_lattice_mapping_k_best,
+                reorientation_range=_lattice_mapping_reorientation_range,
+                cost_tol=_cost_tol,
+            )
+
+            for scored_lattice_mapping in lattice_mappings:
+                lattice_mapping_data = mapsearch.LatticeMappingSearchData(
+                    prim_data=parent_search_data,
+                    structure_data=child_structure_data,
+                    lattice_mapping=scored_lattice_mapping,
+                )
+
+                # for each lattice mapping, generate possible translations
+                trial_translations = mapsearch.make_trial_translations(
+                    lattice_mapping_data=lattice_mapping_data,
+                )
+
+                # for each combination of lattice mapping and translation,
+                # make and insert a mapping solution (MappingNode)
+                for trial_translation in trial_translations:
+                    search.make_and_insert_mapping_node(
+                        lattice_cost=scored_lattice_mapping.lattice_cost(),
+                        lattice_mapping_data=lattice_mapping_data,
+                        trial_translation_cart=trial_translation,
+                        forced_on={},
+                        forced_off=[],
+                    )
+
+            while search.size():
+                search.partition()
+
+            search_results, uuids, chain_orbits = self.add_new_results(
+                new_results=search.results().data(),
+                search_results=search_results,
+                uuids=uuids,
+                chain_orbits=chain_orbits,
+                parent=parent,
+                child=child,
+                parent_prim=parent_prim,
+                k_best=_total_k_best,
+                cost_tol=_cost_tol,
+            )
+
+            self.write_results(
+                search_results=search_results,
+                uuids=uuids,
+                parent=parent,
+                child=child,
+                results_dir=results_dir,
+            )
+
+            if len(search_results) > 0:
+                min_total_cost = search_results[0].total_cost()
+                max_total_cost = search_results[-1].total_cost()
+
+            # Delete the last line
+            sys.stdout.write("\033[F")  # Move cursor up one line
+            sys.stdout.write("\033[K")  # Clear the line
+            sys.stdout.flush()
 
             print(
-                f"Mapping child supercell {i_child_superlattice + 1}"
-                f"/{len(child_superlattices)} (supercell size={child_vol})... "
+                (
+                    f"Pair: {i_pair + 1} / {total} (#atoms: {n_atoms}), "
+                    f"MinTotalCost: {min_total_cost:.5f}, "
+                    f"MaxTotalCost: {max_total_cost:.5f}, "
+                    f"#mappings: {len(search_results)}"
+                )
             )
             sys.stdout.flush()
-
-            _vol = _parent_vol.get(child_vol, None)
-            if _vol is None:
-                print("- Skipping: (no matching parent supercell size)")
-                continue
-            print(f"- Mapping to parent supercell size={_vol}")
-            sys.stdout.flush()
-
-            parent_superlattices = xtal.enumerate_superlattices(
-                unit_lattice=parent.lattice(),
-                point_group=parent_crystal_point_group,
-                max_volume=_vol,
-                min_volume=_vol,
-            )
-            if len(parent_superlattices) == 0:
-                raise Exception(
-                    "Implementation error: no valid parent superlattices found "
-                )
-            elif len(parent_superlattices) == 1:
-                print("- There is 1 parent superlattice at this size...")
-            else:
-                print(
-                    f"- There are {len(parent_superlattices)} parent superlattices "
-                    "at this size..."
-                )
-            sys.stdout.flush()
-
-            for i_parent_superlattice, parent_superlattice in enumerate(
-                parent_superlattices
-            ):
-
-                parent_T = xtal.make_transformation_matrix_to_super(
-                    unit_lattice=parent.lattice(),
-                    superlattice=parent_superlattice,
-                )
-
-                print(
-                    f"  - Parent supercell {i_parent_superlattice + 1}"
-                    f"/{len(parent_superlattices)}... "
-                )
-                sys.stdout.flush()
-
-                lattice_mappings = mapmethods.map_lattices(
-                    lattice1=parent.lattice(),
-                    lattice2=child_structure_data.lattice(),
-                    transformation_matrix_to_super=parent_T,
-                    lattice1_point_group=parent_search_data.prim_crystal_point_group(),
-                    lattice2_point_group=child_structure_data.structure_crystal_point_group(),
-                    min_cost=_lattice_mapping_min_cost,
-                    max_cost=_lattice_mapping_max_cost,
-                    cost_method=_lattice_mapping_cost_method,
-                    k_best=_lattice_mapping_k_best,
-                    reorientation_range=_lattice_mapping_reorientation_range,
-                    cost_tol=_cost_tol,
-                )
-
-                for scored_lattice_mapping in lattice_mappings:
-                    lattice_mapping_data = mapsearch.LatticeMappingSearchData(
-                        prim_data=parent_search_data,
-                        structure_data=child_structure_data,
-                        lattice_mapping=scored_lattice_mapping,
-                    )
-
-                    # for each lattice mapping, generate possible translations
-                    trial_translations = mapsearch.make_trial_translations(
-                        lattice_mapping_data=lattice_mapping_data,
-                    )
-
-                    # for each combination of lattice mapping and translation,
-                    # make and insert a mapping solution (MappingNode)
-                    for trial_translation in trial_translations:
-                        search.make_and_insert_mapping_node(
-                            lattice_cost=scored_lattice_mapping.lattice_cost(),
-                            lattice_mapping_data=lattice_mapping_data,
-                            trial_translation_cart=trial_translation,
-                            forced_on={},
-                            forced_off=[],
-                        )
-
-        print()
-        print("# of initial mappings: ", search.size())
-        print()
-        sys.stdout.flush()
-
-        print("Searching next best mappings...")
-        sys.stdout.flush()
-
-        while search.size():
-            search.partition()
+            # pbar.update(1)
 
         print("DONE")
         print()
         sys.stdout.flush()
-
-        search_results = search.results()
-
-        if len(search_results) == 0:
-            print("No valid mappings found.")
         print(f"# Results: {len(search_results)}\n")
         sys.stdout.flush()
 
-        self.write_results(
-            search_results=search_results,
-            parent=parent,
-            child=child,
-            results_dir=results_dir,
-        )
-
         self.tabulate_results(
             search_results=search_results,
+            uuids=uuids,
             parent=parent,
             child=child,
+            parent_prim=parent_prim,
         )
 
-        # records = []
-        # for i, scored_structure_mapping in enumerate(search_results):
-        #     new_result = StructureMappingRecord(
-        #         prim=parent,
-        #         scored_structure_mapping=scored_structure_mapping,
-        #         opt=opt,
-        #     )
-        #
-        #     if opt.deduplicate:
-        #         # Check for duplicates:
-        #         found_duplicate = False
-        #         duplicate_index = 0
-        #         for existing in records:
-        #             if new_result.is_duplicate_of(
-        #                 existing,
-        #                 f_chain=opt.deduplicate_using,
-        #                 only_check_strain=opt.deduplicate_only_check_strain,
-        #             ):
-        #                 found_duplicate = True
-        #                 break
-        #             duplicate_index += 1
-        #
-        #         if found_duplicate:
-        #             if new_result.volume >= records[duplicate_index].volume:
-        #                 # print(
-        #                 #     f"Result {i} is a duplicate of result "
-        #                 #     f"{duplicate_index}... skipping"
-        #                 # )
-        #                 # sys.stdout.flush()
-        #                 continue
-        #             else:
-        #                 # print(
-        #                 #     f"Result {i} is a duplicate of result "
-        #                 #     f"{duplicate_index}... replacing"
-        #                 # )
-        #                 # sys.stdout.flush()
-        #                 records[duplicate_index] = new_result
-        #         else:
-        #             # print(f"Result {i} is a new result... adding")
-        #             sys.stdout.flush()
-        #             records.append(new_result)
-        #     else:
-        #         # Include all:
-        #         records.append(new_result)
-
         return 0
+
+    def add_new_results(
+        self,
+        new_results: list[mapinfo.ScoredStructureMapping],
+        search_results: list[mapinfo.ScoredStructureMapping],
+        uuids: list[str],
+        chain_orbits: list[list[xtal.Structure]],
+        parent: xtal.Structure,
+        child: xtal.Structure,
+        parent_prim: casmconfig.Prim,
+        k_best: int,
+        cost_tol: float,
+    ) -> tuple[
+        list[mapinfo.ScoredStructureMapping],
+        list[list[xtal.Structure]],
+    ]:
+        """Add new results to the search results, deduplicating them."""
+        # Deduplicate the new results
+        f_chain = self.opt.deduplication_interpolation_factors
+
+        def make_chain(structure_mapping):
+            return make_primitive_chain(
+                parent_lattice=parent.lattice(),
+                child=child,
+                structure_mapping=structure_mapping,
+                f_chain=f_chain,
+            )
+
+        def make_orbit(chain_prototype):
+            return make_chain_orbit(
+                chain_prototype=chain_prototype,
+                parent_prim=parent_prim,
+            )
+
+        while len(chain_orbits) < len(search_results):
+            smap = search_results[len(chain_orbits)]
+            chain_orbits.append(make_orbit(make_chain(smap)))
+            uuids.append(str(uuid.uuid4()))
+
+        if len(new_results) == 0:
+            return search_results, uuids, chain_orbits
+
+        for i, smap_new in enumerate(new_results):
+            primitive_chain = make_chain(smap_new)
+
+            # Check for duplicates:
+            found_duplicate = False
+            i_duplicate = 0
+            for smap_existing, chain_orbit_existing in zip(
+                search_results, chain_orbits
+            ):
+                if chain_is_in_orbit(primitive_chain, chain_orbit_existing):
+                    found_duplicate = True
+                    break
+                i_duplicate += 1
+
+            if found_duplicate:
+                smap_existing = search_results[i_duplicate]
+                scel_size_new = parent_supercell_size(smap_new)
+                scel_size_existing = parent_supercell_size(smap_existing)
+
+                prefer_new = False
+                if scel_size_new < scel_size_existing:
+                    prefer_new = True
+
+                # prefer smaller volume mappings
+                if prefer_new:
+                    search_results[i_duplicate] = smap_new
+                    uuids[i_duplicate] = str(uuid.uuid4())
+                    chain_orbits[i_duplicate] = make_orbit(primitive_chain)
+                else:
+                    continue
+            else:
+                search_results.append(smap_new)
+                uuids.append(str(uuid.uuid4()))
+                chain_orbits.append(make_orbit(primitive_chain))
+
+        # Sort the search results and chain orbits, by total cost
+        sys.stdout.flush()
+        isorted = [
+            x[0]
+            for x in sorted(enumerate(search_results), key=lambda x: x[1].total_cost())
+        ]
+        search_results = [search_results[i] for i in isorted]
+        uuids = [uuids[i] for i in isorted]
+        chain_orbits = [chain_orbits[i] for i in isorted]
+
+        # Keep only the k-best results
+        if len(search_results) > k_best:
+            next_index = k_best
+            while next_index < len(search_results):
+                next_cost = search_results[next_index].total_cost()
+                if math.isclose(
+                    search_results[k_best - 1].total_cost(), next_cost, abs_tol=cost_tol
+                ):
+                    next_index += 1
+                else:
+                    break
+
+            search_results = search_results[:(next_index)]
+            uuids = uuids[:(next_index)]
+            chain_orbits = chain_orbits[:(next_index)]
+
+        return search_results, uuids, chain_orbits
+
+    def deduplicate_results(
+        self,
+        search_results: list[mapinfo.ScoredStructureMapping],
+        parent: xtal.Structure,
+        child: xtal.Structure,
+        parent_prim: casmconfig.Prim,
+    ) -> list[mapinfo.ScoredStructureMapping]:
+        _results = []
+        _chain_orbits = []
+        f_chain = self.opt.deduplication_interpolation_factors
+
+        def make_chain(structure_mapping):
+            return make_primitive_chain(
+                parent_lattice=parent.lattice(),
+                child=child,
+                structure_mapping=structure_mapping,
+                f_chain=f_chain,
+            )
+
+        def make_orbit(chain_prototype):
+            return make_chain_orbit(
+                chain_prototype=chain_prototype,
+                parent_prim=parent_prim,
+            )
+
+        for i, smap_new in enumerate(search_results):
+
+            primitive_chain = make_chain(smap_new)
+
+            # Check for duplicates:
+            found_duplicate = False
+            i_duplicate = 0
+            for smap_existing, chain_orbit_existing in zip(_results, _chain_orbits):
+                if chain_is_in_orbit(primitive_chain, chain_orbit_existing):
+                    found_duplicate = True
+                    break
+                i_duplicate += 1
+
+            if found_duplicate:
+                scel_size_new = parent_supercell_size(smap_new)
+                scel_size_existing = parent_supercell_size(_results[i_duplicate])
+
+                # prefer smaller volume mappings
+                if scel_size_new >= scel_size_existing:
+                    continue
+                else:
+                    _results[i_duplicate] = smap_new
+                    _chain_orbits[i_duplicate] = make_orbit(primitive_chain)
+            else:
+                _results.append(smap_new)
+                _chain_orbits.append(make_orbit(primitive_chain))
+
+        return _results, _chain_orbits
 
     def write_results(
         self,
         search_results: list[mapinfo.ScoredStructureMapping],
+        uuids: list[str],
         parent: xtal.Structure,
         child: xtal.Structure,
         results_dir: pathlib.Path,
@@ -874,8 +1259,8 @@ class StructureMappingSearch:
         data = {
             "parent": parent.to_dict(),
             "child": child.to_dict(),
-            "scored_structure_mappings": [smap.to_dict() for smap in search_results],
-            "options": self.opt.to_dict(),
+            "mappings": [smap.to_dict() for smap in search_results],
+            "uuids": [x for x in uuids],
         }
         safe_dump(
             data,
@@ -884,11 +1269,22 @@ class StructureMappingSearch:
             quiet=True,
         )
 
+        options = read_optional(results_dir / "options_history.json", default=[])
+        options.append(self.opt.to_dict())
+        safe_dump(
+            options,
+            path=results_dir / "options_history.json",
+            force=True,
+            quiet=True,
+        )
+
     def tabulate_results(
         self,
         search_results: list[mapinfo.ScoredStructureMapping],
+        uuids: list[str],
         parent: xtal.Structure,
         child: xtal.Structure,
+        parent_prim: casmconfig.Prim,
     ) -> str:
         """Tabulate the results of the search."""
 
@@ -898,9 +1294,12 @@ class StructureMappingSearch:
             "TotCost",
             "LatCost",
             "AtmCost",
-            "Parent Vol.",
+            "Parent Vol., Grp., #Ops",
             "Child Vol.",
+            "Mult.",
+            "UUID",
         ]
+        f_chain = self.opt.deduplication_interpolation_factors
 
         data = []
         for i, scored_structure_mapping in enumerate(search_results):
@@ -908,17 +1307,32 @@ class StructureMappingSearch:
 
             latmap = smap.lattice_mapping()
             T_parent = latmap.transformation_matrix_to_super()
-            parent_volume = int(round(np.linalg.det(T_parent)))
+            parent_volume = abs(int(round(np.linalg.det(T_parent))))
             T_child = make_child_transformation_matrix_to_super(
                 parent_lattice=parent.lattice(),
                 child_lattice=child.lattice(),
                 structure_mapping=scored_structure_mapping,
             )
-            child_volume = int(round(np.linalg.det(T_child)))
+            child_volume = abs(int(round(np.linalg.det(T_child))))
 
             total_cost = f"{smap.total_cost():.{prec}f}"
             lattice_cost = f"{smap.lattice_cost():.{prec}f}"
             atom_cost = f"{smap.atom_cost():.{prec}f}"
+
+            chain_orbit = make_primitive_chain_orbit(
+                parent_prim=parent_prim,
+                child=child,
+                structure_mapping=smap,
+                f_chain=f_chain,
+            )
+            mult = len(chain_orbit)
+
+            parent_info = make_parent_supercell_info(
+                structure_mapping=smap,
+                parent_prim=parent_prim,
+            )
+            parent_grp = parent_info["spacegroup_type"]["international_short"]
+            fg_size = parent_info["factor_group_size"]
 
             data.append(
                 [
@@ -926,8 +1340,10 @@ class StructureMappingSearch:
                     total_cost,
                     lattice_cost,
                     atom_cost,
-                    parent_volume,
+                    str(parent_volume) + ", " + parent_grp + ", " + str(fg_size),
                     child_volume,
+                    mult,
+                    uuids[i],
                 ]
             )
 
