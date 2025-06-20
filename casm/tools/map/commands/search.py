@@ -1,3 +1,4 @@
+import argparse
 import pathlib
 
 # <-- max width = 80 characters                            --> #
@@ -98,7 +99,7 @@ atom mapping is still performed.
 
 The `--forced-on` option can be used to constrain the atom
 mapping search and force the mapping of specific atoms from
-the child structure to specific atoms in the parent structure.
+the child structure to specific sites in the parent structure.
 
 The `--forced-off` option can be used to suppress the mapping
 of specific atoms from the child structure to specific atoms in
@@ -111,9 +112,9 @@ By default, mean displacements are removed from the atom
 mappings. For relaxations where some atom positions are fixed, 
 it may be desirable to suppress this with the
 `--no-remove-mean-displacement` option. If this option is 
-provided, then `--forced-on` must be specified for at least
-one pair of atoms. A trial translation resulting in an exact 
-mapping (zero displacement) is generated for each pair.
+provided, then `--forced-on` must be specify at least one atom 
+mapping. A trial translation resulting in an displacement of
+zero is generated for each forced mapping.
 
 
 ## Parameters
@@ -192,36 +193,36 @@ Atom mapping options:
 --iso-disp-cost: bool=False
     If given, use the isotropic displacement cost method for 
     the atom mapping cost.
---forced-on: Optional[list[int]]=None
-    If given, specifies pairs of (parent atom index, child atom
-    index) that must be mapped. Indices start from 0. This is 
-    used to force specific atom mappings in the search. This
-    argument can be given multiple times as pairs, or as a
-    single list. For example, `--forced-on 0 0 --forced-on 2 3` 
-    is equivalent to `--forced-on 0 0 2 3`, and specifies that
-    the first atom in the child structure must be mapped to
-    the first atom in the parent structure, and the fourth atom
-    in the child structure must be mapped to the third atom
-    in the parent structure.
---forced-off: Optional[list[int]]=None
-    If given, specifies pairs of (parent atom index, child atom
-    index) that must not be mapped. Indices start from 0. This is 
-    used to suppress specific atom mappings in the search. This
-    argument can be given multiple times as pairs, or as a
-    single list. For example, `--forced-on 0 0 --forced-on 2 3` 
-    is equivalent to `--forced-on 0 0 2 3`, and specifies that
-    the first atom in the child structure must not be mapped to
-    the first atom in the parent structure, and the fourth atom
-    in the child structure must not be mapped to the third atom
-    in the parent structure.
+--forced-on: Optional[str]=None
+    If given, a JSON representation of a list[tuple[int,int]]
+    giving forced atom mapping. The first element of each tuple 
+    is a parent structure site index and the second element is a
+    child structure atom index. Indices start from 0. For 
+    example, `--forced-on "[[0,0],[2,3]]"` specifies that the 
+    first atom in the child structure (index 0) must be mapped 
+    to the first site (index 0) in the parent structure, and the
+    fourth atom (index 3) in the child structure must be mapped 
+    to the third site (index 2) in the parent structure.
+--forced-off: Optional[str]=None
+    If given, a JSON representation of a list[tuple[int,int]] 
+    giving suppressed atom mappings. The first element of each 
+    tuple is a parent structure site index and the second 
+    element is a child structure atom index. Indices start from 
+    0. For example, `--forced-off "[[0,2],[0,3]]"` specifies 
+    that the third atom (index 2) in the child structure must 
+    not be mapped to the first site (index 0) in the parent 
+    structure, and the fourth atom (index 3) in the child 
+    structure must also not be mapped to the first site 
+    (index 0) in the parent structure.
     
 Deduplication options:
 
---dedup-interp-factors: Optional[list[float]]=None
-    Interpolation factors to use for deduplication. A value of
+--dedup-interp-factors: Optional[str]=None
+    If given, a JSON representation of a list[float] giving 
+    interpolation factors to use for deduplication. A value of
     0.0 corresponds to the parent structure and a value of
     1.0 corresponds to the mapped child structure. If None, the 
-    default ``[0.5, 1.0]`` is used.
+    default, equivalent to ``"[0.5,1.0]"``, is used.
 
 Input options:
 
@@ -320,10 +321,12 @@ def get_child_format(args):
 
 def run_search(args):
 
+    import json
     import math
     import sys
 
     import libcasm.xtal as xtal
+    import libcasm.configuration as casmconfig
     from casm.tools.map import (
         StructureMappingSearch,
         StructureMappingSearchOptions,
@@ -335,7 +338,10 @@ def run_search(args):
         print(search_desc)
         return 0
 
-    parent = read_structure(path=args.parent, format=get_parent_format(args))
+    if args.alloy:
+        parent = casmconfig.Prim.from_dict(data=read_required(args.parent))
+    else:
+        parent = read_structure(path=args.parent, format=get_parent_format(args))
     print("Parent:")
     print(parent)
     print()
@@ -360,30 +366,6 @@ def run_search(args):
         if args.iso_disp_cost:
             atom_mapping_cost_method = "isotropic_disp_cost"
 
-        forced_on = None
-        if args.forced_on is not None:
-            if len(args.forced_on) % 2 != 0:
-                raise ValueError(
-                    "The --forced-on option must be given as pairs of "
-                    "(parent atom index, child atom index)."
-                )
-            forced_on = {
-                int(args.forced_on[i]): int(args.forced_on[i + 1])
-                for i in range(0, len(args.forced_on), 2)
-            }
-
-        forced_off = None
-        if args.forced_off is not None:
-            if len(args.forced_off) % 2 != 0:
-                raise ValueError(
-                    "The --forced-off option must be given as pairs of "
-                    "(parent atom index, child atom index)."
-                )
-            forced_off = [
-                (args.forced_off[i], args.forced_off[i + 1])
-                for i in range(0, len(args.forced_off), 2)
-            ]
-
         opt = StructureMappingSearchOptions(
             max_n_atoms=args.max_n_atoms,
             min_n_atoms=args.min_n_atoms,
@@ -402,8 +384,8 @@ def run_search(args):
             lattice_mapping_reorientation_range=args.lattice_reorientation_range,
             lattice_mapping_cost_method=lattice_mapping_cost_method,
             atom_mapping_cost_method=atom_mapping_cost_method,
-            forced_on=forced_on,
-            forced_off=forced_off,
+            forced_on=args.forced_on,
+            forced_off=args.forced_off,
             deduplication_interpolation_factors=args.dedup_interp_factors,
         )
 
@@ -462,8 +444,110 @@ def run_search(args):
     return code
 
 
+def _print(*x):
+    import sys
+
+    print(*x)
+    sys.stdout.flush()
+
+
+def validate_forced_on(value):
+    import json
+
+    type_exception = argparse.ArgumentTypeError(
+        "The --forced-on option must be a JSON list[tuple[int,int]]."
+    )
+
+    value_exception = argparse.ArgumentTypeError(
+        "For the --forced-on option, "
+        "all parent site indices (first index in each pair) must be unique, "
+        "and all child atom indices (second index in each pair) must be unique."
+    )
+
+    try:
+        forced_on = json.loads(value)
+    except json.JSONDecodeError:
+        raise type_exception
+
+    # Ensure that forced_on is a list of tuples[int, int]
+    if not isinstance(forced_on, list):
+        raise type_exception
+
+    for item in forced_on:
+        if not isinstance(item, list) or len(item) != 2:
+            raise type_exception
+        if not isinstance(item[0], int) or not isinstance(item[1], int):
+            raise type_exception
+
+    # check that all first indices are unique:
+    seen_indices = set()
+    for x in forced_on:
+        if x[0] in seen_indices:
+            raise value_exception
+        seen_indices.add(x[0])
+
+    # check that all second indices are unique:
+    seen_indices = set()
+    for x in forced_on:
+        if x[1] in seen_indices:
+            raise value_exception
+        seen_indices.add(x[1])
+
+    return {x[0]: x[1] for x in forced_on}
+
+
+def validate_forced_off(value):
+    import json
+
+    exception = argparse.ArgumentTypeError(
+        "The --forced-off option must be a JSON list[tuple[int,int]]."
+    )
+
+    try:
+        forced_off = json.loads(value)
+    except json.JSONDecodeError:
+        raise exception
+
+    # Ensure that forced_off is a list of tuples[int, int]
+    if not isinstance(forced_off, list):
+        raise exception
+
+    for item in forced_off:
+        if not isinstance(item, list) or len(item) != 2:
+            raise exception
+        if not isinstance(item[0], int) or not isinstance(item[1], int):
+            raise exception
+
+    return [tuple(item) for item in forced_off]
+
+
+def validate_dedup_interp_factors(value):
+
+    import json
+
+    exception = argparse.ArgumentTypeError(
+        "The --dedup-interp-factors option must be a JSON list of floats."
+    )
+
+    try:
+        dedup_interp_factors = json.loads(value)
+    except json.JSONDecodeError:
+        raise exception
+
+    # Ensure that dedup_interp_factors is a list of floats
+    valid = True
+    if not isinstance(dedup_interp_factors, list):
+        raise exception
+
+    for factor in dedup_interp_factors:
+        if not isinstance(factor, (int, float)):
+            raise exception
+
+    return dedup_interp_factors
+
+
 def make_search_parser(m):
-    ### casm-calc vasp ...
+    ### casm-map search ...
     search = m.add_parser(
         "search",
         help="Search for structure mappings",
@@ -609,31 +693,34 @@ def make_search_parser(m):
     )
     atommap.add_argument(
         "--forced-on",
-        type=int,
-        nargs="*",
+        type=validate_forced_on,
         default=None,
-        help=("Force specific atom mappings."),
+        help=("Force specific atom mappings (JSON list[tuple[int,int]])."),
     )
     atommap.add_argument(
         "--forced-off",
-        type=int,
-        nargs="*",
+        type=validate_forced_off,
         default=None,
-        help=("Suppress specific atom mappings."),
+        help=("Suppress specific atom mappings (JSON list[tuple[int,int]])"),
     )
 
     ### Deduplication options
     dedup = search.add_argument_group("Deduplication options")
     dedup.add_argument(
         "--dedup-interp-factors",
-        type=float,
-        nargs="*",
+        type=validate_dedup_interp_factors,
         default=None,
-        help="Interpolation factors for deduplication (default= 0.5 1.0).",
+        help="Interpolation factors for deduplication (JSON list[float]).",
     )
 
     ### Input options
     input = search.add_argument_group("Input options")
+    input.add_argument(
+        "--alloy",
+        action="store_true",
+        default=False,
+        help=("Read parent as a CASM Prim and map child structure onto allowed sites."),
+    )
     input.add_argument(
         "--format",
         type=str,

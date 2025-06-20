@@ -1,0 +1,87 @@
+#compdef casm-map
+
+_casm-map() {
+    local curcontext="$curcontext" state line
+    typeset -A opt_args
+
+    # _arguments -C \
+    #  '1:command:(search write)' \
+    #  '*::options:->args'
+
+    _arguments -C \
+      '1:command:_values "commands" "search[Search for structure mappings]" "write[Write structure mappings to files]"' \
+      '*::options:->args'
+
+    case $state in
+      args)
+        case $words[1] in
+          search)
+            # Completions specific to the 'search' subcommand
+            _casm-map_search_arguments
+            ;;
+          write)
+            # Completions specific to the 'write' subcommand
+            _casm-map_write_arguments
+            ;;
+        esac
+        ;;
+    esac
+}
+
+_casm-map_search_arguments() {
+  _arguments \
+    '(-h --help)'{-h,--help}"[show this help message and exit]" \
+    '--min-n-atoms[Minimum number of atoms in superstructures (int)]' \
+    '--max-n-atoms[Maximum number of atoms in superstructures (int)]' \
+    '--min-total-cost[Minimum total cost (float)]' \
+    '--max-total-cost[Maximum total cost (float)]' \
+    '--k-best[Total number of mapping results (int)]' \
+    '--cost-tol[Cost tolerance for approximate ties (float)]' \
+    '--lattice-cost-weight[Fraction of total cost due to lattice cost (float)]' \
+    '--iso-cost[Use isotropic strain and disp costs]' \
+    '--no-remove-mean-displacement[Do not remove the mean displacement from the structure mappings]' \
+    '--fix-parent[Map to parent structure as provided; skip checking superstructures and lattice reorientations]' \
+    '--iso-strain-cost[Use isotropic strain cost for the lattice mapping cost]' \
+    '--min-lattice-cost[Minimum lattice cost (float)]' \
+    '--max-lattice-cost[Maximum lattice cost (float)]' \
+    '--lattice-k-best[Number of lattice mappings per parent/child superstructure (int)]' \
+    '--lattice-reorientation-range[Max lattice reorientation matrix element (int)]' \
+    '--iso-disp-cost[Use isotropic disp cost for the atom mapping cost]' \
+    '--forced-on[Force specific atom mappings (JSON dict\[int,int\])]' \
+    '--forced-off[Suppress specific atom mappings (JSON list\[tuple\[int,int\]\])]' \
+    '--dedup-interp-factors[Interpolation factors for deduplication (JSON list\[float\])]' \
+    '--format[Structure files format (casm vasp cif xyz etc.)]' \
+    '--parent-format[Parent structure file format (casm vasp cif xyz etc.)]' \
+    '--child-format[Child structure file format (casm vasp cif xyz etc.)]' \
+    '--options[JSON file containing options]:options:_files ' \
+    '--results-dir[Directory where results are written]:results-dir:_files -/' \
+    '--merge[Merge new results into existing results]' \
+    '--next[Expand previous search to include next greatest common multiple number of atoms]' \
+    '--desc[Print an extended description of the method and parameters]' \
+    '1:parent structure file:_files' \
+    '2:child structure file:_files'
+}
+
+_casm-map_write_arguments() {
+  _arguments \
+    '(-h --help)'{-h,--help}"[show this help message and exit]" \
+    '(-b --best)'{-b,--best}"[Select the lowest-cost mapping]" \
+    '--uuid[Select one or more mappings by UUID (str)]' \
+    '--index[Select one or more mappings by index (int)]' \
+    '--orbit[Write orbit of equivalent mapped structures]' \
+    '--path[Write interpolated path with specified number of images (int)]' \
+    '--path-orbit[Write orbit of equivalent interpolated paths with specified number of images (int)]' \
+    '--results-dir[Directory containing mapping search results]:results-dir:_files -/' \
+    '--prefix[Specify a custom location where output files are written]:prefix:_files -/' \
+    '(-s --save)'{-s,--save}"[Write the mapping and output files in a subdirectory of the results directory]" \
+    '--one-file-per-orbit[Write orbit of equivalent mapped structures in one file]' \
+    '--one-file-per-path[Write path in one file]' \
+    '--casm[Write mapped structures as CASM structure JSON files]' \
+    '--config[Write mapped structures as CASM configuration JSON files]' \
+    '--vasp[Write mapped structures as VASP POSCAR files]' \
+    '--vasp-neb[Write path images as VASP POSCAR for NEB calculation input]' \
+    '--format[Output structure file format  (casm vasp cif xyz etc.)]' \
+    '--desc[Print an extended description of the method and parameters]'
+}
+
+_casm-map "$@"

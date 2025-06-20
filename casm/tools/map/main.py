@@ -5,6 +5,7 @@ import sys
 from casm.tools.shared import contexts
 
 from .commands.search import make_search_parser
+from .commands.write import make_write_parser
 
 
 def make_parser():
@@ -15,6 +16,7 @@ def make_parser():
 
     m = parser.add_subparsers(title="Select which method to use")
     make_search_parser(m)
+    make_write_parser(m)
 
     return parser
 
@@ -36,6 +38,11 @@ def main(argv=None, working_dir=None):
             from .commands.search import search_desc
 
             print(search_desc)
+            return 0
+        elif "write" in argv:
+            from .commands.write import write_desc
+
+            print(write_desc)
             return 0
         else:
             parser.print_help()
