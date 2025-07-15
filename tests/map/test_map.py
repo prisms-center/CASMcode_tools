@@ -21,7 +21,7 @@ def test_example_map_1_bcc_fcc(examples_dir, tmp_path):
         [
             "casm-map",
             "search",
-            "--child-max-supercell-size=8",
+            "--max-n-atoms=4",
             "--max-total-cost=0.2",
             "BCC_Li.vasp",
             "FCC_Li.vasp",
@@ -61,7 +61,7 @@ def test_example_map_1_bcc_fcc(examples_dir, tmp_path):
         ScoredStructureMapping.from_dict(data=data, prim=parent_xtal_prim)
         for data in data["mappings"]
     ]
-    assert len(mappings) == 10
+    assert len(mappings) == 30
     for mapping in mappings:
         assert isinstance(mapping, ScoredStructureMapping)
 
@@ -86,7 +86,7 @@ def test_example_map_1_bcc_hcp(examples_dir, tmp_path):
         [
             "casm-map",
             "search",
-            "--child-max-supercell-size=2",
+            "--max-n-atoms=4",
             "BCC_Li.vasp",
             "HCP_Li.vasp",
         ],
@@ -125,7 +125,7 @@ def test_example_map_1_bcc_hcp(examples_dir, tmp_path):
         ScoredStructureMapping.from_dict(data=data, prim=parent_xtal_prim)
         for data in data["mappings"]
     ]
-    assert len(mappings) == 10
+    assert len(mappings) == 83
     for mapping in mappings:
         assert isinstance(mapping, ScoredStructureMapping)
 

@@ -321,12 +321,11 @@ def get_child_format(args):
 
 def run_search(args):
 
-    import json
     import math
     import sys
 
-    import libcasm.xtal as xtal
     import libcasm.configuration as casmconfig
+    import libcasm.xtal as xtal
     from casm.tools.map import (
         StructureMappingSearch,
         StructureMappingSearchOptions,
@@ -535,7 +534,6 @@ def validate_dedup_interp_factors(value):
         raise exception
 
     # Ensure that dedup_interp_factors is a list of floats
-    valid = True
     if not isinstance(dedup_interp_factors, list):
         raise exception
 

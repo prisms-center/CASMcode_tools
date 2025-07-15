@@ -261,29 +261,19 @@ def parent_supercell_factor_group_size(
     return len(record.supercell.factor_group.elements)
 
 
-def make_parent_supercell_info(
-    structure_mapping: mapinfo.StructureMapping,
-    parent_prim: casmconfig.Prim,
+def make_supercell_info(
+    supercell: casmconfig.Supercell,
 ) -> dict:
+    """Make a dictionary with information about the supercell."""
     info = {}
-    T = structure_mapping.lattice_mapping().transformation_matrix_to_super()
-    T_int = np.round(T).astype(int)
-    info["parent_volume"] = round(int(np.linalg.det(T)))
-    supercell = casmconfig.Supercell(
-        prim=parent_prim,
-        transformation_matrix_to_super=T_int,
-    )
+    T_int = supercell.transformation_matrix_to_super
+    info["parent_volume"] = round(int(np.linalg.det(T_int)))
     default_config = casmconfig.Configuration(supercell=supercell)
     symgroup = supercell.factor_group
-    # data = symgroup_to_dict_with_group_classification(
-    #     default_config,
-    #     symgroup,
-    # )
     data = _get_symgroup_classification(
         obj=default_config,
         symgroup=symgroup,
     )
-
     info["factor_group_size"] = len(symgroup.elements)
 
     # This handles getting the supercell crystal symmetry
@@ -292,15 +282,33 @@ def make_parent_supercell_info(
         info["spacegroup_type"] = data["group_classification"]["spacegroup_type"]
     else:
         info["spacegroup_type"] = classification["spacegroup_type_from_casm_symmetry"]
-    # print("---")
-    # print("T_int:\n", T_int)
-    # print("spacegroup:\n", info["spacegroup_type"])
-    # print(
-    #     "spacegroup from cams:\n",
-    #     ,
-    # )
-    # print("---")
     return info
+
+
+def make_parent_supercell_info(
+    structure_mapping: mapinfo.StructureMapping,
+    parent_prim: casmconfig.Prim,
+) -> dict:
+    T = structure_mapping.lattice_mapping().transformation_matrix_to_super()
+    T_int = np.round(T).astype(int)
+    supercell = casmconfig.Supercell(
+        prim=parent_prim,
+        transformation_matrix_to_super=T_int,
+    )
+    return make_supercell_info(supercell=supercell)
+
+
+def make_child_supercell_info(
+    T_child: np.ndarray,
+    child_prim: casmconfig.Prim,
+) -> dict:
+    """Make a dictionary with information about the child supercell."""
+    T_int = np.round(T_child).astype(int)
+    supercell = casmconfig.Supercell(
+        prim=child_prim,
+        transformation_matrix_to_super=T_int,
+    )
+    return make_supercell_info(supercell=supercell)
 
 
 def make_primitive_chain_info(

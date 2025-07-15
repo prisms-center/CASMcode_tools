@@ -21,6 +21,7 @@ from casm.tools.shared.json_io import (
 from .methods import (
     chain_is_in_orbit,
     make_chain_orbit,
+    make_child_supercell_info,
     make_child_transformation_matrix_to_super,
     make_parent_supercell_info,
     make_primitive_chain,
@@ -191,7 +192,11 @@ class StructureMappingSearchOptions:
             "lattice_mapping_reorientation_range": self.lattice_mapping_reorientation_range,  # noqa: E501
             "lattice_mapping_cost_method": self.lattice_mapping_cost_method,
             "atom_mapping_cost_method": self.atom_mapping_cost_method,
-            "forced_on": self.forced_on,
+            "forced_on": (
+                [[key, value] for key, value in self.forced_on.items()]
+                if self.forced_on is not None
+                else None
+            ),
             "forced_off": self.forced_off,
             "lattice_cost_weight": self.lattice_cost_weight,
             "cost_tol": self.cost_tol,
@@ -229,7 +234,11 @@ class StructureMappingSearchOptions:
             ],
             lattice_mapping_cost_method=data["lattice_mapping_cost_method"],
             atom_mapping_cost_method=data["atom_mapping_cost_method"],
-            forced_on=data["forced_on"],
+            forced_on=(
+                {x[0]: x[1] for x in data["forced_on"]}
+                if data["forced_on"] is not None
+                else None
+            ),
             forced_off=(
                 [tuple(x) for x in data["forced_off"]]
                 if data["forced_off"] is not None
@@ -288,6 +297,34 @@ def results_dir_exists_error(results_dir: pathlib.Path) -> None:
 # or specify a new one.                                                        #
 
 --results-dir={results_dir}
+
+# Stopping...                                                                  #
+################################################################################
+"""
+    print(error)
+    sys.exit(1)
+
+
+def invalid_forced_on_values_error(
+    parent_site_index: int,
+    child_atom_index: int,
+    child_type: str,
+    allowed_types: list[str],
+) -> None:
+    """Print an error message if the `--forced-on` option is used with invalid
+    values."""
+
+    error = f"""
+################################################################################
+# Error: Invalid --forced-on values                                            #
+#                                                                              #
+# The `--forced-on` option requires that the child atom type is allowed on the #
+# parent site.                                                                 #
+
+child_atom_index={child_atom_index}
+child_type={child_type}
+parent_site_index={parent_site_index}
+allowed_types={allowed_types}
 
 # Stopping...                                                                  #
 ################################################################################
@@ -676,6 +713,19 @@ class StructureMappingSearch:
             print()
             print("Stopping")
             sys.exit(1)
+
+        if self.opt.forced_on is not None:
+            _allowed = [list([x]) for x in parent.atom_type()]
+            _child_types = child.atom_type()
+            for parent_site_index, child_atom_index in self.opt.forced_on.items():
+                child_type = _child_types[child_atom_index]
+                if child_type not in _allowed[parent_site_index]:
+                    invalid_forced_on_values_error(
+                        parent_site_index=parent_site_index,
+                        child_atom_index=child_atom_index,
+                        child_type=child_type,
+                        allowed_types=_allowed[parent_site_index],
+                    )
 
         if self.opt.fix_parent:
             child_n_atoms = len(child.atom_type())
@@ -1088,6 +1138,21 @@ class StructureMappingSearch:
                     lattice_mapping=scored_lattice_mapping,
                 )
 
+                # Check if 'forced_on' values are valid.
+                if len(_forced_on) > 0:
+                    _allowed = lattice_mapping_data.supercell_allowed_atom_types()
+                    _child_types = child_structure_data.atom_type()
+                    for parent_site_index, child_atom_index in _forced_on.items():
+                        child_type = _child_types[child_atom_index]
+                        if child_type not in _allowed[parent_site_index]:
+                            raise ValueError(
+                                f"Invalid --forced-on values: "
+                                f"child atom {child_atom_index} (type={child_type}) "
+                                f"is not allowed to map to "
+                                f"parent site {parent_site_index} "
+                                f"(allowed types: {_allowed[parent_site_index]})"
+                            )
+
                 # for each lattice mapping, generate possible translations
                 if not _enable_remove_mean_displacement:
                     # If mean displacement removal is disabled, then we need info
@@ -1114,9 +1179,6 @@ class StructureMappingSearch:
                     trial_translations = mapsearch.make_trial_translations(
                         lattice_mapping_data=lattice_mapping_data,
                     )
-                print("len(trial_translations):", len(trial_translations))
-                print("\n")
-                sys.stdout.flush()
 
                 # for each combination of lattice mapping and translation,
                 # make and insert a mapping solution (MappingNode)
@@ -1401,11 +1463,12 @@ class StructureMappingSearch:
             "LatCost",
             "AtmCost",
             "Parent Vol., Grp., #Ops",
-            "Child Vol.",
+            "Child Vol., Grp., #Ops",
             "Mult.",
             "UUID",
         ]
         f_chain = self.opt.deduplication_interpolation_factors
+        child_prim = casmconfig.Prim(xtal.Prim.from_atom_coordinates(structure=child))
 
         data = []
         for i, scored_structure_mapping in enumerate(search_results):
@@ -1440,6 +1503,13 @@ class StructureMappingSearch:
             parent_grp = parent_info["spacegroup_type"]["international_short"]
             fg_size = parent_info["factor_group_size"]
 
+            child_info = make_child_supercell_info(
+                T_child=T_child,
+                child_prim=child_prim,
+            )
+            child_grp = child_info["spacegroup_type"]["international_short"]
+            child_fg_size = child_info["factor_group_size"]
+
             data.append(
                 [
                     i,
@@ -1447,7 +1517,7 @@ class StructureMappingSearch:
                     lattice_cost,
                     atom_cost,
                     str(parent_volume) + ", " + parent_grp + ", " + str(fg_size),
-                    child_volume,
+                    str(child_volume) + ", " + child_grp + ", " + str(child_fg_size),
                     mult,
                     uuids[i],
                 ]
