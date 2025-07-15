@@ -1,6 +1,6 @@
 import os
 import sys
-from typing import Any
+import typing
 
 import numpy as np
 
@@ -9,10 +9,10 @@ import libcasm.mapping.info as mapinfo
 import libcasm.mapping.methods as mapmethods
 import libcasm.sym_info as sym_info
 import libcasm.xtal as xtal
-from libcasm.configuration.io import symgroup_to_dict_with_group_classification
+import libcasm.configuration.io as config_io
 
 
-def suppress_output(func, *args, **kwargs):
+def _suppress_output(func, *args, **kwargs):
     with open(os.devnull, "w") as devnull:
         # Save the original file descriptors for stdout and stderr
         old_stdout_fd = os.dup(sys.stdout.fileno())
@@ -32,12 +32,12 @@ def suppress_output(func, *args, **kwargs):
 
 
 def _get_symgroup_classification(
-    obj: Any,
+    obj: typing.Any,
     symgroup: sym_info.SymGroup,
 ):
     """Call symgroup_to_dict_with_group_classification with suppressed spglib output."""
-    return suppress_output(
-        symgroup_to_dict_with_group_classification,
+    return _suppress_output(
+        config_io.symgroup_to_dict_with_group_classification,
         obj,
         symgroup,
     )
@@ -328,10 +328,6 @@ def make_primitive_chain_info(
         tmp_prim = casmconfig.Prim(
             xtal_prim=xtal.Prim.from_atom_coordinates(structure=structure)
         )
-        # data = symgroup_to_dict_with_group_classification(
-        #     tmp_prim,
-        #     tmp_prim.factor_group,
-        # )
         data = _get_symgroup_classification(
             obj=tmp_prim,
             symgroup=tmp_prim.factor_group,

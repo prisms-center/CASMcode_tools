@@ -1,18 +1,25 @@
 import pathlib
 
+
 # <-- max width = 80 characters                            --> #
 ################################################################
-write_desc = """
+def print_desc():
+    desc = """
 # The `casm-map write` command:
 
 TODO
 """
+    print(desc)
 
 
 def run_write(args):
-    """
-    Run the write command with the provided arguments.
-    This function is a placeholder and should be implemented with actual logic.
+    """Implements ``casm-map write ...``
+
+    Parameters
+    ----------
+    args : argparse.Namespace
+        The parsed arguments from the command line.
+
     """
     print("Running write command with arguments:", args)
     # Implement the logic for the write command here
@@ -20,7 +27,15 @@ def run_write(args):
 
 
 def make_write_parser(m):
-    ### casm-map write ...
+    """Adds the ``casm-map write ...`` argument sub-parser.
+
+    Parameters
+    ----------
+    m : argparse._SubParsersAction
+        The output from ``parser.add_subparsers`` to which ``casm-map write`` arguments
+        are added.
+
+    """
     write = m.add_parser(
         "write",
         help=(

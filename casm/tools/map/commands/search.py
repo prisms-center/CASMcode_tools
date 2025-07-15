@@ -1,9 +1,11 @@
 import argparse
 import pathlib
 
+
 # <-- max width = 80 characters                            --> #
 ################################################################
-search_desc = """
+def print_desc():
+    desc = """
 # The `casm-map search` command:
 
 ## Method
@@ -287,6 +289,8 @@ using the method of Thomas et al. [2] implemented in CASM [3]."
     (2023) 111897.
 
 """
+    print(desc)
+
 
 _other_desc = """
 --parent-superstructure: Optional[pathlib.Path]=None
@@ -303,7 +307,7 @@ _other_desc = """
 """
 
 
-def get_parent_format(args):
+def _get_parent_format(args):
     if args.parent_format is not None:
         return args.parent_format
     if args.format is not None:
@@ -311,7 +315,7 @@ def get_parent_format(args):
     return None
 
 
-def get_child_format(args):
+def _get_child_format(args):
     if args.child_format is not None:
         return args.child_format
     if args.format is not None:
@@ -320,6 +324,19 @@ def get_child_format(args):
 
 
 def run_search(args):
+    """Implements ``casm-map search ...``
+
+    Parameters
+    ----------
+    args : argparse.Namespace
+        The parsed arguments from the command line.
+
+    Returns
+    -------
+    code: int
+        A return code indicating success (0) or failure (non-zero).
+
+    """
 
     import math
     import sys
@@ -340,12 +357,12 @@ def run_search(args):
     if args.alloy:
         parent = casmconfig.Prim.from_dict(data=read_required(args.parent))
     else:
-        parent = read_structure(path=args.parent, format=get_parent_format(args))
+        parent = read_structure(path=args.parent, format=_get_parent_format(args))
     print("Parent:")
     print(parent)
     print()
 
-    child = read_structure(path=args.child, format=get_child_format(args))
+    child = read_structure(path=args.child, format=_get_child_format(args))
     print("Child:")
     print(child)
     print()
@@ -450,7 +467,7 @@ def _print(*x):
     sys.stdout.flush()
 
 
-def validate_forced_on(value):
+def _validate_forced_on(value):
     import json
 
     type_exception = argparse.ArgumentTypeError(
@@ -495,7 +512,7 @@ def validate_forced_on(value):
     return {x[0]: x[1] for x in forced_on}
 
 
-def validate_forced_off(value):
+def _validate_forced_off(value):
     import json
 
     exception = argparse.ArgumentTypeError(
@@ -520,7 +537,7 @@ def validate_forced_off(value):
     return [tuple(item) for item in forced_off]
 
 
-def validate_dedup_interp_factors(value):
+def _validate_dedup_interp_factors(value):
 
     import json
 
@@ -691,13 +708,13 @@ def make_search_parser(m):
     )
     atommap.add_argument(
         "--forced-on",
-        type=validate_forced_on,
+        type=_validate_forced_on,
         default=None,
         help=("Force specific atom mappings (JSON list[tuple[int,int]])."),
     )
     atommap.add_argument(
         "--forced-off",
-        type=validate_forced_off,
+        type=_validate_forced_off,
         default=None,
         help=("Suppress specific atom mappings (JSON list[tuple[int,int]])"),
     )
@@ -706,7 +723,7 @@ def make_search_parser(m):
     dedup = search.add_argument_group("Deduplication options")
     dedup.add_argument(
         "--dedup-interp-factors",
-        type=validate_dedup_interp_factors,
+        type=_validate_dedup_interp_factors,
         default=None,
         help="Interpolation factors for deduplication (JSON list[float]).",
     )

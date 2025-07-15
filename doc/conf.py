@@ -1,13 +1,13 @@
 import os
 
 # -- package specific configuration --
-project = "casm-map"
+project = "casm-tools"
 version = "1.0"  # The short X.Y version.
-release = "1.0aa"  # The full version, including alpha/beta/rc tags.
-project_desc = "CASM Python tools for structure mapping and import"
-logo_text = "casm-map"
-github_url = "https://github.com/prisms-center/casm_map/"
-pypi_url = "https://pypi.org/project/casm-map/"
+release = "1.0a"  # The full version, including alpha/beta/rc tags.
+project_desc = "CASM command line programs"
+logo_text = "casm-tools"
+github_url = "https://github.com/prisms-center/CASMcode_tools/"
+pypi_url = "https://pypi.org/project/casm-tools/"
 intersphinx_libcasm_packages = [
     ("global", "2.0"),
     ("xtal", "2.0"),
@@ -78,7 +78,6 @@ extensions = [
     "sphinx.ext.viewcode",
     "sphinx.ext.githubpages",
     "sphinx.ext.napoleon",
-    "sphinx_favicon",
     "sphinxarg.ext",
     "sphinxcontrib.bibtex",
     "sphinx.ext.intersphinx",
@@ -105,7 +104,7 @@ source_suffix = ".rst"
 master_doc = "index"
 
 # General information about the project.
-copyright = "2023, CASM Developers"
+copyright = "2024, CASM Developers"
 author = "CASM Developers"
 
 # The version info for the project you're documenting, acts as replacement for
@@ -168,17 +167,17 @@ html_theme_options = {
             "type": "fontawesome",
         },
     ],
-    # "primary_sidebar_end": ["primary_sidebar_end"]
+    "show_toc_level": 4,
 }
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ["_static"]
-html_favicon = "_static/small_logo.svg"
-favicons = ["small_logo.svg"]
 html_css_files = [
     "css/custom.css",
 ]
+html_favicon = "_static/favicon-16x16.png"
+html_show_sourcelink = False
 
 # Custom sidebar templates, must be a dictionary that maps document names
 # to template names.

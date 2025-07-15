@@ -1,7 +1,7 @@
 import shutil
 import subprocess
 
-from casm.tools.map.StructureMappingSearch import (
+from casm.tools.map._StructureMappingSearch import (
     StructureMappingSearchOptions,
 )
 from casm.tools.shared.json_io import read_required

@@ -9,4 +9,4 @@ casm package
     :template: custom-module-template.rst
     :recursive:
 
-    casm.map
+    casm.tools

@@ -2,14 +2,20 @@ import argparse
 import os
 import sys
 
-from casm.tools.shared import contexts
-
-from .commands.search import make_search_parser
-from .commands.write import make_write_parser
-
 
 def make_parser():
-    """Make a parser for the casm-map command line interface."""
+    """Make the ``casm-map ...`` argument parser
+
+    Returns
+    -------
+    parser: argparse.ArgumentParser
+        The argument parser for the `casm-map` program.
+
+    """
+
+    from .search import make_search_parser
+    from .write import make_write_parser
+
     parser = argparse.ArgumentParser(
         description="CASM structure mapping CLI tool",
     )
@@ -22,6 +28,23 @@ def make_parser():
 
 
 def main(argv=None, working_dir=None):
+    """Implements ``casm-map ...``
+
+    Parameters
+    ----------
+    argv : list of str, optional
+        The command line arguments to parse. If None, uses `sys.argv`.
+    working_dir : str, optional
+        The working directory to use. If None, uses the current working directory.
+
+    Returns
+    -------
+    code: int
+        A return code indicating success (0) or failure (non-zero).
+
+    """
+    from casm.tools.shared import contexts
+
     if argv is None:
         argv = sys.argv
     if working_dir is None:
@@ -35,14 +58,14 @@ def main(argv=None, working_dir=None):
     if "--desc" in argv:
 
         if "search" in argv:
-            from .commands.search import search_desc
+            from .search import print_desc
 
-            print(search_desc)
+            print_desc()
             return 0
         elif "write" in argv:
-            from .commands.write import write_desc
+            from .write import print_desc
 
-            print(write_desc)
+            print_desc()
             return 0
         else:
             parser.print_help()

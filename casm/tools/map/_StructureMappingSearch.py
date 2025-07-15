@@ -2,7 +2,7 @@ import math
 import pathlib
 import sys
 import uuid
-from typing import Optional
+from typing import Optional, Union
 
 import numpy as np
 from tabulate import tabulate
@@ -250,6 +250,59 @@ class StructureMappingSearchOptions:
                 "deduplication_interpolation_factors"
             ],
         )
+
+
+class MappingSearchData:
+    def __init__(
+        self,
+        parent: Union[xtal.Structure, casmconfig.Prim],
+        child: xtal.Structure,
+        options: Optional[StructureMappingSearchOptions] = None,
+        mappings: list[mapinfo.ScoredStructureMapping] = [],
+        uuids: list[str] = [],
+        options_history: list[StructureMappingSearchOptions] = [],
+        results_dir: Optional[pathlib.Path] = None,
+    ):
+
+        if results_dir is None:
+            results_dir = pathlib.Path("results").resolve()
+
+        if isinstance(parent, xtal.Structure):
+            parent_structure = parent
+            parent_prim = casmconfig.Prim.from_atom_coordinates(structure=parent)
+        elif isinstance(parent, casmconfig.Prim):
+            parent_structure = None
+            parent_prim = parent
+        else:
+            raise TypeError(
+                "Error in MappingSearchData: `parent` must be either a "
+                "libcasm.xtal.Structure or a libcasm.configuration.Prim."
+            )
+
+        self.parent_structure: Optional[xtal.Structure] = parent_structure
+        """Optional[xtal.Structure]: The parent structure, with lattice :math:`L_{1}`."""
+
+        self.parent_prim: casmconfig.Prim = parent_prim
+        """casmconfig.Prim: The `casmconfig.Prim` for the parent, which determines
+        allowed occupants on each basis site."""
+
+        self.child_structure: xtal.Structure = child
+        """Optional[xtal.Structure]: The child structure, with lattice :math:`L_{2}`."""
+
+        self.mappings: list[mapinfo.ScoredStructureMapping] = mappings
+        """list[mapinfo.ScoredStructureMapping]: The list of scored structure mappings
+        between the parent structure and the child superstructure."""
+
+        self.uuids: list[str] = uuids
+        """list[str]: A list of UUIDs for the mappings, used to identify them
+        uniquely."""
+
+        self.options_history: list[StructureMappingSearchOptions] = options_history
+        """list[StructureMappingSearchOptions]: A history of options used by previous
+        searches."""
+
+        self.options: Optional[StructureMappingSearchOptions] = options
+        """Optional[StructureMappingSearchOptions]: Options for the current search."""
 
 
 class SearchResult:
@@ -570,18 +623,18 @@ class StructureMappingSearch:
     - enable mean displacement removal
 
 
-    To do so, this class finds lattice mappings of the type:
+    To do so, this method finds lattice mappings of the type:
 
     .. math::
 
-        F * L_1 * T_1 * N = L_2 * T_2
+        F L_1 T_1 N = L_2 T_2
 
     where:
 
     - :math:`T_2` is a shape=(3,3) integer transformation matrix that generates a
       superlattice of the child lattice :math:`L_2`
     - other variables are defined as in the class
-      :class:`libcasm.mapping.info.LatticeMapping`
+      :class:`libcasm.mapping.info.LatticeMapping`, using :math:`T_1` for :math:`T`.
 
 
     Notes
@@ -604,9 +657,12 @@ class StructureMappingSearch:
     Other options include:
 
     - Choice of mapping cost methods:
+
       - Lattice mapping cost: "isotropic_strain_cost" or "symmetry_breaking_strain_cost"
       - Atom mapping cost: "isotropic_disp_cost" or "symmetry_breaking_disp_cost"
-      - Lattice cost weight
+      - Lattice cost weight: The fraction of the total cost that is due to the lattice
+      mapping cost. The remainder is due to the atom mapping cost.
+
     - Choice of interpolation factors used for deduplication
 
     """

@@ -37,7 +37,7 @@ Homepage = "https://prisms-center.github.io/CASMcode_docs/"
 Repository = "https://github.com/prisms-center/casm_map"
 
 [project.scripts]
-casm-map = "casm.tools.map.main:main"
+casm-map = "casm.tools.map.commands.main:main"
 casm-calc = "casm.tools.calc.main:main"
 
 [build_sphinx]

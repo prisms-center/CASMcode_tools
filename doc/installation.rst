@@ -13,7 +13,7 @@ The latest release of casm-map can be installed with:
 
 .. code-block:: bash
 
-    pip install casm-map
+    pip install casm-tools
 
 
 Install from source
@@ -30,4 +30,4 @@ See the `casm contribution guide`_.
 
 .. _`casm  contribution guide`: https://prisms-center.github.io/CASMcode_docs/pages/contributing_to_casm_packages/
 .. _CASM: https://prisms-center.github.io/CASMcode_docs/
-.. _GitHub: https://github.com/prisms-center/casm_map/
+.. _GitHub: https://github.com/prisms-center/CASMcode_tools/

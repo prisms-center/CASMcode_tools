@@ -1,4 +1,4 @@
-from .StructureMappingSearch import (
+from ._StructureMappingSearch import (
     StructureMappingSearch,
     StructureMappingSearchOptions,
 )
