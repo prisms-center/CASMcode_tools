@@ -39,6 +39,7 @@ def floordiv(a, b):
 
 
 class StructureMappingSearchOptions:
+    """Options controlling the structure mapping search."""
 
     def __init__(
         self,
@@ -63,7 +64,9 @@ class StructureMappingSearchOptions:
         cost_tol: Optional[float] = 1e-5,
         deduplication_interpolation_factors: Optional[list[float]] = None,
     ):
-        """Options for `map_structures_v2`.
+        """
+
+        .. rubric:: Constructor
 
         Parameters
         ----------
@@ -280,11 +283,12 @@ class MappingSearchData:
             )
 
         self.parent_structure: Optional[xtal.Structure] = parent_structure
-        """Optional[xtal.Structure]: The parent structure, with lattice :math:`L_{1}`."""
+        """Optional[xtal.Structure]: The parent structure, with lattice 
+        :math:`L_{1}`, if mapping to a particular structure."""
 
         self.parent_prim: casmconfig.Prim = parent_prim
-        """casmconfig.Prim: The `casmconfig.Prim` for the parent, which determines
-        allowed occupants on each basis site."""
+        """casmconfig.Prim: The :class:`~libcasm.configuration.Prim` for the parent, 
+        which determines allowed occupants on each basis site."""
 
         self.child_structure: xtal.Structure = child
         """Optional[xtal.Structure]: The child structure, with lattice :math:`L_{2}`."""
@@ -294,8 +298,7 @@ class MappingSearchData:
         between the parent structure and the child superstructure."""
 
         self.uuids: list[str] = uuids
-        """list[str]: A list of UUIDs for the mappings, used to identify them
-        uniquely."""
+        """list[str]: A list of UUIDs for the mappings."""
 
         self.options_history: list[StructureMappingSearchOptions] = options_history
         """list[StructureMappingSearchOptions]: A history of options used by previous
@@ -661,7 +664,7 @@ class StructureMappingSearch:
       - Lattice mapping cost: "isotropic_strain_cost" or "symmetry_breaking_strain_cost"
       - Atom mapping cost: "isotropic_disp_cost" or "symmetry_breaking_disp_cost"
       - Lattice cost weight: The fraction of the total cost that is due to the lattice
-      mapping cost. The remainder is due to the atom mapping cost.
+        mapping cost. The remainder is due to the atom mapping cost.
 
     - Choice of interpolation factors used for deduplication
 
@@ -1252,7 +1255,7 @@ class StructureMappingSearch:
 
             search_results, uuids, chain_orbits = self.add_new_results(
                 new_results=search.results().data(),
-                search_results=search_results,
+                existing_results=search_results,
                 uuids=uuids,
                 chain_orbits=chain_orbits,
                 parent=parent,
@@ -1312,7 +1315,7 @@ class StructureMappingSearch:
     def add_new_results(
         self,
         new_results: list[mapinfo.ScoredStructureMapping],
-        search_results: list[mapinfo.ScoredStructureMapping],
+        existing_results: list[mapinfo.ScoredStructureMapping],
         uuids: list[str],
         chain_orbits: list[list[xtal.Structure]],
         parent: xtal.Structure,
@@ -1322,9 +1325,45 @@ class StructureMappingSearch:
         cost_tol: float,
     ) -> tuple[
         list[mapinfo.ScoredStructureMapping],
+        list[str],
         list[list[xtal.Structure]],
     ]:
-        """Add new results to the search results, deduplicating them."""
+        """Add new results to the existing search results, deduplicating them.
+
+        Parameters
+        ----------
+        new_results : list[libcasm.mapping.info.ScoredStructureMapping]
+            The new results to add to the existing search results.
+        existing_results : list[libcasm.mapping.info.ScoredStructureMapping]
+            The existing search results to which the new results will be added.
+        uuids : list[str]
+            The UUIDs of the existing search results.
+        chain_orbits : list[list[xtal.Structure]]
+            The chain orbits of the existing search results.
+        parent : xtal.Structure
+            The parent structure.
+        child : xtal.Structure
+            The child structure.
+        parent_prim : casmconfig.Prim
+            The parent structure, as a Prim.
+        k_best : int
+            The number of best results to keep after deduplication. Any approximate ties
+            will also be kept.
+        cost_tol : float
+            The tolerance for comparing costs.
+
+        Returns
+        -------
+        search_results : list[libcasm.mapping.info.ScoredStructureMapping]
+            The updated list of search results after deduplication.
+        uuids : list[str]
+            The updated list of UUIDs corresponding to the search results.
+        chain_orbits : list[list[xtal.Structure]]
+            The updated list of chain orbits corresponding to the search results.
+
+        """
+        search_results = existing_results
+
         # Deduplicate the new results
         f_chain = self.opt.deduplication_interpolation_factors
 
@@ -1412,60 +1451,6 @@ class StructureMappingSearch:
             chain_orbits = chain_orbits[:(next_index)]
 
         return search_results, uuids, chain_orbits
-
-    def deduplicate_results(
-        self,
-        search_results: list[mapinfo.ScoredStructureMapping],
-        parent: xtal.Structure,
-        child: xtal.Structure,
-        parent_prim: casmconfig.Prim,
-    ) -> list[mapinfo.ScoredStructureMapping]:
-        _results = []
-        _chain_orbits = []
-        f_chain = self.opt.deduplication_interpolation_factors
-
-        def make_chain(structure_mapping):
-            return make_primitive_chain(
-                parent_lattice=parent.lattice(),
-                child=child,
-                structure_mapping=structure_mapping,
-                f_chain=f_chain,
-            )
-
-        def make_orbit(chain_prototype):
-            return make_chain_orbit(
-                chain_prototype=chain_prototype,
-                parent_prim=parent_prim,
-            )
-
-        for i, smap_new in enumerate(search_results):
-
-            primitive_chain = make_chain(smap_new)
-
-            # Check for duplicates:
-            found_duplicate = False
-            i_duplicate = 0
-            for smap_existing, chain_orbit_existing in zip(_results, _chain_orbits):
-                if chain_is_in_orbit(primitive_chain, chain_orbit_existing):
-                    found_duplicate = True
-                    break
-                i_duplicate += 1
-
-            if found_duplicate:
-                scel_size_new = parent_supercell_size(smap_new)
-                scel_size_existing = parent_supercell_size(_results[i_duplicate])
-
-                # prefer smaller volume mappings
-                if scel_size_new >= scel_size_existing:
-                    continue
-                else:
-                    _results[i_duplicate] = smap_new
-                    _chain_orbits[i_duplicate] = make_orbit(primitive_chain)
-            else:
-                _results.append(smap_new)
-                _chain_orbits.append(make_orbit(primitive_chain))
-
-        return _results, _chain_orbits
 
     def write_results(
         self,

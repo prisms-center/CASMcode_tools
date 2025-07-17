@@ -1,3 +1,5 @@
+"""Text file input/output"""
+
 import gzip
 import pathlib
 

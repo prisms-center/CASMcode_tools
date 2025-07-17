@@ -31,6 +31,7 @@ def test_example_map_1_bcc_fcc(examples_dir, tmp_path):
         text=True,
         cwd=tmp_path,
     )
+    assert result.returncode == 0
 
     print("---stdout---")
     print(result.stdout)
@@ -95,6 +96,7 @@ def test_example_map_1_bcc_hcp(examples_dir, tmp_path):
         text=True,
         cwd=tmp_path,
     )
+    assert result.returncode == 0
 
     print("---stdout---")
     print(result.stdout)

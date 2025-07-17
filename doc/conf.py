@@ -64,7 +64,8 @@ for package, vers in intersphinx_libcasm_packages:
         url = os.path.join(pydocs_path, f"{package}/{vers}/html")
         inventory = os.path.join(pydocs_path, f"{package}/{vers}/objects.inv")
     intersphinx_mapping[package] = (url, inventory)
-
+intersphinx_mapping["python"] = ("https://docs.python.org/3", None)
+intersphinx_mapping["ase"] = ("https://wiki.fysik.dtu.dk/ase/", None)
 print(intersphinx_mapping)
 
 

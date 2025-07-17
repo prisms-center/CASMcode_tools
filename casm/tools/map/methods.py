@@ -1,3 +1,5 @@
+"""Methods used to implement ``casm-map``"""
+
 import os
 import sys
 import typing
@@ -5,11 +7,11 @@ import typing
 import numpy as np
 
 import libcasm.configuration as casmconfig
+import libcasm.configuration.io as config_io
 import libcasm.mapping.info as mapinfo
 import libcasm.mapping.methods as mapmethods
 import libcasm.sym_info as sym_info
 import libcasm.xtal as xtal
-import libcasm.configuration.io as config_io
 
 
 def _suppress_output(func, *args, **kwargs):
@@ -48,15 +50,16 @@ def make_child_transformation_matrix_to_super(
     child_lattice: xtal.Lattice,
     structure_mapping: mapinfo.StructureMapping,
 ) -> xtal.Structure:
-    """Create a child superstructure from the parent and structure mapping.
+    """Create the transformation matrix to a child superstructure from the parent and
+    structure mapping.
 
     Parameters
     ----------
-    parent_lattice : xtal.Lattice
+    parent_lattice : libcasm.xtal.Lattice
         The parent lattice.
-    child_lattice : xtal.Lattice
+    child_lattice : libcasm.xtal.Lattice
         The child lattice.
-    structure_mapping : mapinfo.StructureMapping
+    structure_mapping : libcasm.mapping.info.StructureMapping
         The structure mapping between the parent and child structures.
 
     Returns
@@ -88,16 +91,16 @@ def make_child_superstructure(
 
     Parameters
     ----------
-    parent_lattice : xtal.Lattice
+    parent_lattice : libcasm.xtal.Lattice
         The parent lattice.
-    child : xtal.Structure
+    child : libcasm.xtal.Structure
         The child structure.
-    structure_mapping : mapinfo.StructureMapping
+    structure_mapping : libcasm.mapping.info.StructureMapping
         The structure mapping between the parent and child structures.
 
     Returns
     -------
-    xtal.Structure
+    libcasm.xtal.Structure
         The child superstructure.
     """
     T2 = make_child_transformation_matrix_to_super(
@@ -120,6 +123,26 @@ def make_mapped_child_superstructure(
     structure_mapping: mapinfo.StructureMapping,
     f: float,
 ) -> xtal.Structure:
+    """Create a mapped child superstructure from the parent and structure mapping.
+
+    Parameters
+    ----------
+    parent_lattice : xtal.Lattice
+        The parent lattice.
+    child : xtal.Structure
+        The child structure.
+    structure_mapping : libcasm.mapping.info.StructureMapping
+        The structure mapping between the parent and child structures.
+    f : float
+        The interpolation factor, where a value of 0.0 corresponds to the ideal parent
+        superstructure and a value of 1.0 corresponds to the mapped child
+        superstructure.
+
+    Returns
+    -------
+    xtal.Structure
+        The mapped child superstructure.
+    """
     s = mapmethods.make_mapped_structure(
         structure_mapping=structure_mapping.interpolated(f),
         unmapped_structure=make_child_superstructure(
@@ -143,7 +166,10 @@ def _make_primitive_structure(init_structure: xtal.Structure):
     return prim_structure
 
 
-def is_equivalent_chain(chain_A, chain_B):
+def is_equivalent_chain(
+    chain_A: list[xtal.Structure],
+    chain_B: list[xtal.Structure],
+) -> bool:
     """Check if two chains of structures are equivalent.
 
     Parameters
@@ -168,7 +194,10 @@ def is_equivalent_chain(chain_A, chain_B):
     return True
 
 
-def chain_is_in_orbit(chain, orbit):
+def chain_is_in_orbit(
+    chain: list[xtal.Structure],
+    orbit: list[list[xtal.Structure]],
+) -> bool:
     """Check if a chain of structures is in a given orbit.
 
     Parameters
@@ -197,6 +226,30 @@ def make_primitive_chain(
     structure_mapping: mapinfo.StructureMapping,
     f_chain: list[float],
 ) -> list[xtal.Structure]:
+    """Make a chain of primitive structures interpolating between the parent and child.
+
+    Parameters
+    ----------
+    parent_lattice : xtal.Lattice
+        The parent lattice.
+
+    child : xtal.Structure
+        The child structure.
+
+    structure_mapping : libcasm.mapping.info.StructureMapping
+        The structure mapping between the parent and child structures.
+
+    f_chain : list[float]
+        The interpolation factors for the structures in the chain, where a value of 0.0
+        corresponds to the ideal parent structure and a value of 1.0 corresponds
+        to the mapped child structure.
+
+    Returns
+    -------
+    primitive_chain : list[xtal.Structure]
+        A list of primitive structures interpolating between the parent and child.
+
+    """
     unmapped_structure = make_child_superstructure(
         parent_lattice=parent_lattice,
         child=child,
@@ -221,6 +274,22 @@ def make_chain_orbit(
     chain_prototype: list[xtal.Structure],
     parent_prim: casmconfig.Prim,
 ) -> list[list[xtal.Structure]]:
+    """Make an orbit of chains of structures from a prototype chain.
+
+    Parameters
+    ----------
+    chain_prototype : list[libcasm.xtal.Structure]
+        A prototype chain of structures.
+    parent_prim : casmconfig.Prim
+        Parent structure, as a Prim. The factor group of this Prim will be used
+        to generate the orbit of equivalent chains.
+
+    Returns
+    -------
+    chain_orbit : list[list[libcasm.xtal.Structure]]
+        A list of chains, where each element is a distinct chain that is equivalent by a
+        symmetry operation in the factor group of the parent Prim.
+    """
     chain_orbit = []
     for op in parent_prim.factor_group.elements:
         chain = []
@@ -238,6 +307,31 @@ def make_primitive_chain_orbit(
     structure_mapping: mapinfo.StructureMapping,
     f_chain: list[float],
 ) -> list[list[xtal.Structure]]:
+    """Make an orbit of chains of primitive structures mapping between the parent and
+    child.
+
+    Parameters
+    ----------
+    parent_prim : casmconfig.Prim
+        Parent structure, as a Prim. The factor group of this Prim will be used
+        to generate the orbit of equivalent chains.
+    child : xtal.Structure
+        The child structure.
+    structure_mapping : libcasm.mapping.info.StructureMapping
+        The structure mapping between the parent and child structures.
+    f_chain : list[float]
+        The interpolation factors for the structures in the chain, where a value of 0.0
+        corresponds to the ideal parent structure and a value of 1.0 corresponds
+        to the mapped child structure.
+
+    Returns
+    -------
+    primitive_chain_orbit : list[list[xtal.Structure]]
+        A list of chains, where each element is a distinct chain that is equivalent by a
+        symmetry operation in the factor group of the parent Prim. The structures in
+        each chain are made primitive.
+
+    """
     return make_chain_orbit(
         chain_prototype=make_primitive_chain(
             parent_lattice=parent_prim.xtal_prim.lattice(),
@@ -253,6 +347,23 @@ def parent_supercell_factor_group_size(
     structure_mapping: mapinfo.StructureMapping,
     supercell_set: casmconfig.SupercellSet,
 ) -> int:
+    """Get the size of the factor group of the parent supercell.
+
+    Parameters
+    ----------
+    structure_mapping : libcasm.mapping.info.StructureMapping
+        The structure mapping between the parent and child structures.
+    supercell_set : casmconfig.SupercellSet
+        A :class:`~libcasm.configuration.SupercellSet` object that allows re-using
+        supercell information.
+
+    Returns
+    -------
+    factor_group_size : int
+        The size of the factor group of the supercell corresponding to the parent
+        superstructure.
+
+    """
     T = structure_mapping.lattice_mapping().transformation_matrix_to_super()
     T_int = np.round(T).astype(int)
     record = supercell_set.add_by_transformation_matrix_to_super(
@@ -264,10 +375,27 @@ def parent_supercell_factor_group_size(
 def make_supercell_info(
     supercell: casmconfig.Supercell,
 ) -> dict:
-    """Make a dictionary with information about the supercell."""
+    """Make a dictionary with information about the supercell.
+
+    Parameters
+    ----------
+    supercell : casmconfig.Supercell
+        A supercell.
+
+    Returns
+    -------
+    data: dict
+        A dictionary containing information about the supercell, including:
+
+        - volume: The volume of the supercell relative to the prim.
+        - factor_group_size: The size of the factor group of the supercell.
+        - spacegroup_type: The space group type of the supercell, determined by spglib
+          from the symmetry determined by CASM.
+
+    """
     info = {}
     T_int = supercell.transformation_matrix_to_super
-    info["parent_volume"] = round(int(np.linalg.det(T_int)))
+    info["volume"] = round(int(np.linalg.det(T_int)))
     default_config = casmconfig.Configuration(supercell=supercell)
     symgroup = supercell.factor_group
     data = _get_symgroup_classification(
@@ -289,6 +417,26 @@ def make_parent_supercell_info(
     structure_mapping: mapinfo.StructureMapping,
     parent_prim: casmconfig.Prim,
 ) -> dict:
+    """Make a dictionary with information about the parent supercell.
+
+    Parameters
+    ----------
+    structure_mapping : libcasm.mapping.info.StructureMapping
+        The structure mapping between the parent and child structures.
+    parent_prim : casmconfig.Prim
+        The parent structure, as a Prim.
+
+    Returns
+    -------
+    data: dict
+        A dictionary containing information about the supercell, including:
+
+        - volume: The volume of the supercell relative to `child_prim`.
+        - factor_group_size: The size of the factor group of the supercell.
+        - spacegroup_type: The space group type of the supercell, determined by spglib
+          from the symmetry determined by CASM.
+
+    """
     T = structure_mapping.lattice_mapping().transformation_matrix_to_super()
     T_int = np.round(T).astype(int)
     supercell = casmconfig.Supercell(
@@ -302,7 +450,26 @@ def make_child_supercell_info(
     T_child: np.ndarray,
     child_prim: casmconfig.Prim,
 ) -> dict:
-    """Make a dictionary with information about the child supercell."""
+    """Make a dictionary with information about the child supercell.
+
+    Parameters
+    ----------
+    T_child : np.ndarray[np.int[3,3]]
+        The transformation matrix to the child superstructure, :math:`T_2`.
+    child_prim : casmconfig.Prim
+        The child structure, as a Prim.
+
+    Returns
+    -------
+    data: dict
+        A dictionary containing information about the supercell, including:
+
+        - volume: The volume of the supercell relative to `child_prim`.
+        - factor_group_size: The size of the factor group of the supercell.
+        - spacegroup_type: The space group type of the supercell, determined by spglib
+          from the symmetry determined by CASM.
+
+    """
     T_int = np.round(T_child).astype(int)
     supercell = casmconfig.Supercell(
         prim=child_prim,
@@ -311,10 +478,31 @@ def make_child_supercell_info(
     return make_supercell_info(supercell=supercell)
 
 
-def make_primitive_chain_info(
+def make_chain_info(
     chain: list[xtal.Structure],
     parent_prim: casmconfig.Prim,
 ):
+    """Make a dictionary with information about the structures in a chain.
+
+    Parameters
+    ----------
+    chain: list[libcasm.xtal.Structure]
+        A chain of structures.
+    parent_prim : casmconfig.Prim
+        The parent structure, as a Prim.
+
+    Returns
+    -------
+    chain_info: list[dict]
+        A ``list[dict]``, with one dictionary for each structure in the chain,
+        including:
+
+        - volume: The volume of the structure relative to `parent_prim`.
+        - factor_group_size: The size of the factor group of the structure.
+        - spacegroup_type: The space group type of the structure, determined by spglib
+          from the symmetry determined by CASM.
+
+    """
     chain_info = []
     vol_parent = abs(parent_prim.xtal_prim.lattice().volume())
     for structure in chain:
@@ -322,7 +510,7 @@ def make_primitive_chain_info(
 
         # Get the volume w.r.t. the prim of the interpolated structure
         vol_structure = abs(structure.lattice().volume())
-        info["parent_volume"] = vol_structure / vol_parent
+        info["volume"] = vol_structure / vol_parent
 
         # Get the space group of the interpolated structure
         tmp_prim = casmconfig.Prim(
@@ -333,7 +521,15 @@ def make_primitive_chain_info(
             symgroup=tmp_prim.factor_group,
         )
         info["factor_group_size"] = len(tmp_prim.factor_group.elements)
-        info["spacegroup_type"] = data["group_classification"]["spacegroup_type"]
+
+        classification = data["group_classification"]
+        if classification.get("spacegroup_type_from_casm_symmetry") is None:
+            info["spacegroup_type"] = data["group_classification"]["spacegroup_type"]
+        else:
+            info["spacegroup_type"] = classification[
+                "spacegroup_type_from_casm_symmetry"
+            ]
+
         chain_info.append(info)
     return chain_info
 
@@ -341,14 +537,22 @@ def make_primitive_chain_info(
 def parent_supercell_size(
     structure_mapping: mapinfo.StructureMapping,
 ) -> int:
-    """Get the size of the supercell for the parent structure."""
+    """Return the size of the parent superstructure the child superstructure was mapped
+    to, relative to the size of the parent structure."""
     T = structure_mapping.lattice_mapping().transformation_matrix_to_super()
     return abs(int(round(np.linalg.det(T))))
 
 
 def child_supercell_size(
+    parent_lattice: xtal.Lattice,
+    child: xtal.Structure,
     structure_mapping: mapinfo.StructureMapping,
 ) -> int:
-    """Get the size of the supercell for the child structure."""
-    T = structure_mapping.lattice_mapping().transformation_matrix_to_super()
-    return abs(int(round(np.linalg.det(T))))
+    """Return the size of the child superstructure that was mapped to the parent
+    superstructure, relative to the size of the child structure."""
+    T_child = make_child_transformation_matrix_to_super(
+        parent_lattice=parent_lattice,
+        child_lattice=child.lattice(),
+        structure_mapping=structure_mapping,
+    )
+    return abs(int(round(np.linalg.det(T_child))))

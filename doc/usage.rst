@@ -4,4 +4,4 @@ Usage
 .. toctree::
     :maxdepth: 4
 
-    Structure mapping search <usage/search>
+    casm-map <usage/casm_map>

@@ -1,3 +1,5 @@
+"""Helpers for context management"""
+
 import contextlib
 import io
 import os

@@ -1,3 +1,5 @@
+"""Implements ``casm-map search ...``"""
+
 import argparse
 import pathlib
 
@@ -272,16 +274,15 @@ Additional options:
 
 A suggested way to cite this program is as follows:
 
-"Structure mappings were found with the `casm-map` program [1], 
-using the method of Thomas et al. [2] implemented in CASM [3]."
-
+"Structure mappings were found by the method of Thomas et al. 
+[1] using the `casm-map` program [2] provided by CASM [3]."
 
 ## References
 
-[1] B. Puchala, J. Thomas, and A. Van der Ven, "casm-map...".
-[2] J. C. Thomas, A. R. Natarajan, and A. Van der Ven, Comparing 
+[1] J. C. Thomas, A. R. Natarajan, and A. Van der Ven, Comparing 
     crystal structures with symmetry and geometry, npj 
     Computational Materials, 7 (2021), 164.
+[2] B. Puchala, J. Thomas, and A. Van der Ven, "casm-map...".
 [3] B. Puchala, J. C. Thomas, A. R. Natarajan, J. G. Goiri, 
     S. S. Behara, J. L. Kaufman, A. Van der Ven, CASM—A software
     package for first-principles based study of multicomponent 
@@ -347,11 +348,11 @@ def run_search(args):
         StructureMappingSearch,
         StructureMappingSearchOptions,
     )
-    from casm.tools.shared.io import read_structure
     from casm.tools.shared.json_io import read_optional, read_required
+    from casm.tools.shared.structure_io import read_structure
 
     if args.desc:
-        print(search_desc)
+        print_desc()
         return 0
 
     if args.alloy:

@@ -1,1 +1,1 @@
-"""Miscellaneous helpers for casm-map"""
+"""Miscellaneous helpers for casm-tools"""

@@ -1,5 +1,5 @@
-Structure mapping search
-========================
+casm-map
+========
 
 Subsection one
 --------------

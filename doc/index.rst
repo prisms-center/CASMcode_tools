@@ -11,14 +11,77 @@
 casm-tools
 ==========
 
-The casm-tools package provides CLI tools based on capabilities implemented in CASM.
-This includes:
+The casm-tools package provides command line programs based on capabilities implemented
+in CASM. This includes:
 
-- casm.tools.calc: Setup, run, and report results of structure calculations
-- casm.tools.convert: Convert structures and configurations between CASM and other
-  formats
-- casm.tools.map: Structure mapping and import
+- casm-calc: Setup, run, and report results of structure calculations
+- casm-convert: [coming soon] Convert structures and configurations between CASM and
+  other formats (using `ASE <https://wiki.fysik.dtu.dk/ase/>`_).
+- casm-map: Structure mapping and import
 
+casm-calc
+---------
+
+The casm-calc command line program uses `ASE <https://wiki.fysik.dtu.dk/ase/>`_ to
+setup, run, and report results of structure calculations for use by CASM. It is
+intended to give basic usable examples for VASP and select other software packages that
+can be used as-is or as a starting point.
+
+A suggested way to cite this program for performing VASP calculations is as follows:
+
+.. code-block:: text
+
+    "Structure calculations were performed with the `casm-calc` program provided
+    by CASM [1], using the VASP calculator provided by ASE [2]."
+
+    1. B. Puchala, J. C. Thomas, A. R. Natarajan, J. G. Goiri, S. S. Behara, J. L.
+       Kaufman, A. Van der Ven, CASM—A software package for first-principles based
+       study of multicomponent crystalline solids, Computational Materials Science
+       217 (2023) 111897.
+    2. Ask Hjorth Larsen, Jens Jørgen Mortensen, Jakob Blomqvist, Ivano E. Castelli,
+       Rune Christensen, Marcin Dułak, Jesper Friis, Michael N. Groves, Bjørk Hammer,
+       Cory Hargus, Eric D. Hermes, Paul C. Jennings, Peter Bjerre Jensen, James
+       Kermode, John R. Kitchin, Esben Leonhard Kolsbjerg, Joseph Kubal, Kristen
+       Kaasbjerg, Steen Lysgaard, Jón Bergmann Maronsson, Tristan Maxson, Thomas Olsen,
+       Lars Pastewka, Andrew Peterson, Carsten Rostgaard, Jakob Schiøtz, Ole Schütt,
+       Mikkel Strange, Kristian S. Thygesen, Tejs Vegge, Lasse Vilhelmsen, Michael
+       Walter, Zhenhua Zeng, Karsten Wedel Jacobsen The Atomic Simulation Environment—A
+       Python library for working with atoms J. Phys.: Condens. Matter Vol. 29 273002,
+       2017.
+
+casm-convert
+------------
+
+The casm-convert command line program is planned to support conversion between CASM and
+other structure formats. Conversions between CASM and VASP formats are implemented in
+CASM. Other conversions are performed using `ASE <https://wiki.fysik.dtu.dk/ase/>`_.
+
+A suggested way to cite this program for performing structure conversions is as follows:
+
+.. code-block:: text
+
+    "Structure conversions were performed with the `casm-convert` program provided
+    by CASM [1]."
+
+    or
+
+    "Structure conversions were performed with the `casm-convert` program provided
+    by CASM [1], using conversions provided by ASE [2]."
+
+    1. B. Puchala, J. C. Thomas, A. R. Natarajan, J. G. Goiri, S. S. Behara, J. L.
+       Kaufman, A. Van der Ven, CASM—A software package for first-principles based
+       study of multicomponent crystalline solids, Computational Materials Science
+       217 (2023) 111897.
+    2. Ask Hjorth Larsen, Jens Jørgen Mortensen, Jakob Blomqvist, Ivano E. Castelli,
+       Rune Christensen, Marcin Dułak, Jesper Friis, Michael N. Groves, Bjørk Hammer,
+       Cory Hargus, Eric D. Hermes, Paul C. Jennings, Peter Bjerre Jensen, James
+       Kermode, John R. Kitchin, Esben Leonhard Kolsbjerg, Joseph Kubal, Kristen
+       Kaasbjerg, Steen Lysgaard, Jón Bergmann Maronsson, Tristan Maxson, Thomas Olsen,
+       Lars Pastewka, Andrew Peterson, Carsten Rostgaard, Jakob Schiøtz, Ole Schütt,
+       Mikkel Strange, Kristian S. Thygesen, Tejs Vegge, Lasse Vilhelmsen, Michael
+       Walter, Zhenhua Zeng, Karsten Wedel Jacobsen The Atomic Simulation Environment—A
+       Python library for working with atoms J. Phys.: Condens. Matter Vol. 29 273002,
+       2017.
 
 casm-map
 --------
@@ -44,18 +107,18 @@ A suggested way to cite this program is as follows:
 
 .. code-block:: text
 
-    "Structure mappings were found with the `casm-map` program [1],
-    using the method of Thomas et al. [2] implemented in CASM [3]."
+    "Structure mappings were found by the method of Thomas et al. [1]
+    using the `casm-map` program [2] provided by CASM [3]."
 
     1. B. Puchala, J. Thomas, and A. Van der Ven, "casm-map...".
-    2. J. C. Thomas, A. R. Natarajan, and A. Van der Ven, Comparing
-        crystal structures with symmetry and geometry, npj
-        Computational Materials, 7 (2021), 164.
     2. B. Puchala, J. C. Thomas, A. R. Natarajan, J. G. Goiri,
         S. S. Behara, J. L. Kaufman, A. Van der Ven, CASM—A software
         package for first-principles based study of multicomponent
         crystalline solids, Computational Materials Science 217
         (2023) 111897.
+    3. J. C. Thomas, A. R. Natarajan, and A. Van der Ven, Comparing
+        crystal structures with symmetry and geometry, npj
+        Computational Materials, 7 (2021), 164.
 
 
 About CASM

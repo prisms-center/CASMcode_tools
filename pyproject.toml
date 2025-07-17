@@ -6,19 +6,18 @@ requires = [
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "casm-map"
+name = "casm-tools"
 version = "1.0a1"
 authors = [
   { name="CASM developers", email="casm-developers@lists.engr.ucsb.edu" },
 ]
-description = "CASM Python tools for structure mapping and import"
+description = "CASM command line tools"
 readme = "README.md"
-requires-python = ">=3.9"
-license = {text = "LGPL2.1+"}
+requires-python = ">=3.9,<3.14"
+license = "LGPL-2.1-or-later"
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: GNU Lesser General Public License v2 or later (LGPLv2+)",
     "Topic :: Scientific/Engineering",
 ]
 dependencies = [
@@ -30,15 +29,14 @@ dependencies = [
 
 [project.optional-dependencies]
 ase = ["ase"]
-pymatgen = ["pymatgen"]
 
 [project.urls]
 Homepage = "https://prisms-center.github.io/CASMcode_docs/"
-Repository = "https://github.com/prisms-center/casm_map"
+Repository = "https://github.com/prisms-center/CASMcode_tools"
 
 [project.scripts]
 casm-map = "casm.tools.map.commands.main:main"
-casm-calc = "casm.tools.calc.main:main"
+casm-calc = "casm.tools.calc.commands.main:main"
 
 [build_sphinx]
 source-dir = "doc"
@@ -53,3 +51,10 @@ select = ["NPY201", "E", "F", "I"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["libcasm", "casm"]
+
+[tool.pytest.ini_options]
+markers = [
+    "requires_ase: marks tests requiring ase (deselect with '-m \"not requires_ase\"')",
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "very_slow: marks tests as very slow (deselect with '-m \"not very_slow\"')",
+]

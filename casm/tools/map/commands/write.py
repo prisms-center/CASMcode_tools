@@ -1,3 +1,5 @@
+"""Implements ``casm-map write ...``"""
+
 import pathlib
 
 

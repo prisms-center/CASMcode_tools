@@ -1,13 +1,15 @@
-import os
+"""Interface with `ASE <https://wiki.fysik.dtu.dk/ase/>`_"""
+
 import pathlib
-from typing import Any, Callable, Optional, Union
+import typing
 
 import ase
 import ase.calculators.vasp
+import ase.io
 import numpy as np
 
+import casm.tools.shared.json_io as json_io
 import libcasm.xtal as xtal
-from casm.tools.shared.json_io import read_required
 
 
 def make_ase_atoms(casm_structure: xtal.Structure) -> ase.Atoms:
@@ -29,7 +31,7 @@ def make_ase_atoms(casm_structure: xtal.Structure) -> ase.Atoms:
 
     Parameters
     ----------
-    casm_structure : xtal.Structure
+    casm_structure : libcasm.xtal.Structure
 
     Returns
     -------
@@ -119,8 +121,10 @@ def make_casm_structure(ase_atoms: ase.Atoms) -> xtal.Structure:
 def write_structure_using_ase(
     casm_structure: xtal.Structure,
     path: pathlib.Path,
-    format: Optional[str] = None,
-    make_ase_atoms_f: Callable[[xtal.Structure], ase.Atoms] = make_ase_atoms,
+    format: typing.Optional[str] = None,
+    make_ase_atoms_f: typing.Optional[
+        typing.Callable[[xtal.Structure], ase.Atoms]
+    ] = None,
 ) -> None:
     """Write a structure using ASE's write function.
 
@@ -137,10 +141,10 @@ def write_structure_using_ase(
     format : Optional[str]=None
         The format to use for writing the file. If None, ASE will try to infer the
         format from the file extension.
-    make_ase_atoms_f : Callable[[xtal.Structure], ase.Atoms]
-        A function to convert the CASM structure to an ASE Atoms object. The
-        default function, :func:`make_ase_atoms` works for non-magnetic atomic
-        structures.
+    make_ase_atoms_f : Optional[Callable[[libcasm.xtal.Structure], ase.Atoms]] = None
+        A function to convert the CASM structure to an ASE Atoms object. If None,
+        the default function, :func:`make_ase_atoms` is used, which works for
+        non-magnetic atomic structures.
 
     """
     try:
@@ -148,17 +152,64 @@ def write_structure_using_ase(
     except ImportError:
         raise ImportError(
             "ASE is not installed. "
-            "Please install ASE to try to write this structure format."
+            "Please install ASE to write this structure format."
         )
+    if make_ase_atoms_f is None:
+        make_ase_atoms_f = make_ase_atoms
 
     ase_atoms = make_ase_atoms_f(casm_structure)
     ase.io.write(path.as_posix(), ase_atoms, format=format)
 
 
+def write_structure_traj_using_ase(
+    casm_structure_traj: list[xtal.Structure],
+    path: pathlib.Path,
+    format: typing.Optional[str] = None,
+    make_ase_atoms_f: typing.Optional[
+        typing.Callable[[xtal.Structure], ase.Atoms]
+    ] = None,
+) -> None:
+    """Write a structure using ASE's write function.
+
+    .. attention::
+
+        This method does not write magnetic moments.
+
+    Parameters
+    ----------
+    casm_structure_traj : list[libcasm.xtal.Structure]
+        The CASM Structure trajectory to write.
+    path : pathlib.Path
+        The path to the file where the structure will be written.
+    format : Optional[str]=None
+        The format to use for writing the file. If None, ASE will try to infer the
+        format from the file extension.
+    make_ase_atoms_f : Optional[Callable[[libcasm.xtal.Structure], ase.Atoms]] = None
+        A function to convert the CASM structure to an ASE Atoms object. If None,
+        the default function, :func:`make_ase_atoms` is used, which works for
+        non-magnetic atomic structures.
+
+    """
+    try:
+        import ase.io
+    except ImportError:
+        raise ImportError(
+            "ASE is not installed. "
+            "Please install ASE to write this structure format."
+        )
+    if make_ase_atoms_f is None:
+        make_ase_atoms_f = make_ase_atoms
+
+    ase_atoms = [make_ase_atoms_f(x) for x in casm_structure_traj]
+    ase.io.write(path.as_posix(), ase_atoms, format=format)
+
+
 def read_structure_using_ase(
     path: pathlib.Path,
-    format: Optional[str] = None,
-    make_casm_structure_f: Callable[[ase.Atoms], xtal.Structure] = make_casm_structure,
+    format: typing.Optional[str] = None,
+    make_casm_structure_f: typing.Optional[
+        typing.Callable[[ase.Atoms], xtal.Structure]
+    ] = None,
 ) -> xtal.Structure:
     """Read a structure using ASE's read function.
 
@@ -173,10 +224,10 @@ def read_structure_using_ase(
     format : Optional[str]=None
         The format to use for reading the file. If None, ASE will try to infer the
         format from the file extension.
-    make_casm_structure_f : Callable[[ase.Atoms], xtal.Structure]
-        A function to convert an ASE Atoms object to a CASM structure. The
-        default function, :func:`make_casm_structure` works for non-magnetic atomic
-        structures.
+    make_casm_structure_f : typing.Callable[[ase.Atoms], libcasm.xtal.Structure]
+        A function to convert an ASE Atoms object to a CASM structure. If None, the
+        default function, :func:`make_casm_structure`, is used, which works for
+        non-magnetic atomic structures.
 
     Returns
     -------
@@ -188,30 +239,79 @@ def read_structure_using_ase(
         import ase.io
     except ImportError:
         raise ImportError(
-            "ASE is not installed. "
-            "Please install ASE to try to read this structure format."
+            "ASE is not installed. Please install ASE to read this structure format."
         )
+    if make_casm_structure_f is None:
+        make_casm_structure_f = make_casm_structure
 
     return make_casm_structure_f(ase.io.read(path.as_posix(), format=format))
+
+
+def read_structure_traj_using_ase(
+    path: pathlib.Path,
+    format: typing.Optional[str] = None,
+    make_casm_structure_f: typing.Optional[
+        typing.Callable[[ase.Atoms], xtal.Structure]
+    ] = None,
+) -> list[xtal.Structure]:
+    """Read a structure trajectory using ASE's read function.
+
+    .. attention::
+
+        This method does not read magnetic moments.
+
+    Parameters
+    ----------
+    path : pathlib.Path
+        The path to the structure file.
+    format : Optional[str]=None
+        The format to use for reading the file. If None, ASE will try to infer the
+        format from the file extension.
+    make_casm_structure_f : typing.Callable[[ase.Atoms], libcasm.xtal.Structure]
+        A function to convert an ASE Atoms object to a CASM structure. If None, the
+        default function, :func:`make_casm_structure`, is used, which works for
+        non-magnetic atomic structures.
+
+    Returns
+    -------
+    casm_structure: libcasm.xtal.Structure
+        A CASM Structure read from the file.
+
+    """
+    try:
+        import ase.io
+    except ImportError:
+        raise ImportError(
+            "ASE is not installed. Please install ASE to read this structure format."
+        )
+    if make_casm_structure_f is None:
+        make_casm_structure_f = make_casm_structure
+
+    return [
+        make_casm_structure_f(x)
+        for x in ase.io.read(path.as_posix(), format=format, index=":")
+    ]
 
 
 class AseVaspTool:
     def __init__(
         self,
-        calctype_settings_dir: Optional[pathlib.Path] = None,
-        make_ase_atoms_f: Callable[[xtal.Structure], ase.Atoms] = make_ase_atoms,
-        make_casm_structure_f: Callable[
-            [ase.Atoms], xtal.Structure
-        ] = make_casm_structure,
+        calctype_settings_dir: typing.Optional[pathlib.Path] = None,
+        make_ase_atoms_f: typing.Optional[
+            typing.Callable[[xtal.Structure], ase.Atoms]
+        ] = None,
+        make_casm_structure_f: typing.Optional[
+            typing.Callable[[ase.Atoms], xtal.Structure]
+        ] = None,
     ):
         """Setup, run, and collect VASP calculations using ASE.
 
-        For details on the parameters, see the `ase documentation for the vasp
-        calculator <https://wiki.fysik.dtu.dk/ase/ase/calculators/vasp.html>`.
+        For details on the parameters and environment configuration, see the
+        `ASE Vasp calculator documentation <https://wiki.fysik.dtu.dk/ase/ase/calculators/vasp.html>`_.
 
         .. attention::
 
-            ase assumes that POTCAR files exist in one of `potpaw_PBE`, `potpaw`, or
+            ASE assumes that POTCAR files exist in one of `potpaw_PBE`, `potpaw`, or
             `potpaw_GGA`, located at the path specified by the environment
             variable VASP_PP_PATH.
 
@@ -222,32 +322,26 @@ class AseVaspTool:
             VASP calculator constructor arguments, and INCAR and KPOINTS
             template files. All files are optional, but if they exist, they will be
             used to set up the VASP calculator.
-        setups: Optional[dict] = None
-            Dictionary of pseudopotential setups for each element.
-        xc: Optional[str] = None
-            Exchange-correlation type, one of: "pbe", "lda", or "pw91"
-        make_ase_atoms_f: Callable[[xtal.Structure], ase.Atoms] = make_ase_atoms
+        make_ase_atoms_f: Optional[Callable[[libcasm.xtal.Structure], ase.Atoms]] = None
             A function to convert the CASM structure to an ASE Atoms object. The
             default function, :func:`make_ase_atoms` works for non-magnetic atomic
             structures.
         make_casm_structure_f: \
-        Callable[[ase.Atoms], xtal.Structure] = make_casm_structure
+        Optional[Callable[[ase.Atoms], libcasm.xtal.Structure]] = None
             A function to convert an ASE Atoms object to a CASM structure. The
             default function, :func:`make_casm_structure` works for non-magnetic atomic
             structures.
         """
-        if "VASP_PP_PATH" not in os.environ:
-            raise ValueError(
-                "Please set the environment variable VASP_PP_PATH to the directory "
-                "containing the VASP POTCAR files. It should contain the directories "
-                "potpaw_PBE, potpaw, and potpaw_GGA."
-            )
+        if make_ase_atoms_f is None:
+            make_ase_atoms_f = make_ase_atoms
+        if make_casm_structure_f is None:
+            make_casm_structure_f = make_casm_structure
 
         ### Read settings from the calctype_settings_dir if provided
 
         self.calctype_settings_dir = calctype_settings_dir
         """Optional[pathlib.Path]: Path to the directory containing settings, 
-        including a `calc`.json file for 
+        including a `calc.json` file for 
         `ASE VASP calculator <https://wiki.fysik.dtu.dk/ase/ase/calculators/vasp.html#module-ase.calculators.vasp>`_
         constructor arguments, and template INCAR and KPOINTS files. All files are 
         optional, but if they exist, they will be used to set up the VASP 
@@ -257,7 +351,9 @@ class AseVaspTool:
         kpoints_path = None
         settings = {}
         if self.calctype_settings_dir is not None:
-            settings = read_required(path=self.calctype_settings_dir / "calc.json")
+            settings = json_io.read_required(
+                path=self.calctype_settings_dir / "calc.json"
+            )
 
             incar_path = calctype_settings_dir / "INCAR"
             if not incar_path.exists():
@@ -269,8 +365,8 @@ class AseVaspTool:
 
         self.settings = settings
         """Optional[dict]: Settings read from the calc.json file in the 
-        calctype_settings_dir, which will be passed to the Vasp calculator
-        constructor."""
+        calctype_settings_dir, which will be passed to the 
+        :class:`ase.calculators.vasp.Vasp` calculator constructor."""
 
         self.incar_path = incar_path
         """Optional[pathlib.Path]: Path to the template INCAR file, if it exists."""
@@ -281,18 +377,35 @@ class AseVaspTool:
         ### Functions to convert between CASM Structure and ASE Atoms
 
         self._make_ase_atoms_f = make_ase_atoms_f
-        """Callable[[xtal.Structure], ase.Atoms]: Function to convert CASM Structure to 
-        ASE Atoms."""
+        """Callable[[libcasm.xtal.Structure], ase.Atoms]: Function to convert CASM 
+        Structure to ASE Atoms."""
 
         self._make_casm_structure_f = make_casm_structure_f
-        """Callable[[ase.Atoms], xtal.Structure]: Function to convert ASE Atoms to
-        CASM Structure."""
+        """Callable[[ase.Atoms], libcasm.xtal.Structure]: Function to convert an 
+        ASE Atoms to CASM Structure."""
 
     def make_calculator(
         self,
         ase_atoms: ase.Atoms,
         calc_dir: pathlib.Path,
     ) -> ase.calculators.vasp.Vasp:
+        """Construct an ASE VASP calculator.
+
+        Parameters
+        ----------
+        ase_atoms: ase.Atoms
+            The ASE Atoms object to use for the calculation.
+        calc_dir: pathlib.Path
+            The directory in which to store the calculation files. This directory will
+            be created if it does not exist.
+
+        Returns
+        -------
+        vasp_calculator: ase.calculators.vasp.Vasp
+            The ASE VASP calculator object, configured with the provided settings and
+            paths to INCAR and KPOINTS files if they exist.
+
+        """
         calc_dir.mkdir(parents=True, exist_ok=True)
 
         vasp_calculator = ase.calculators.vasp.Vasp(
@@ -322,10 +435,6 @@ class AseVaspTool:
             The structure to calculate.
         calc_dir: pathlib.Path
             The directory in which to store the calculation files.
-        make_ase_atoms_f: Callable[[xtal.Structure], ase.Atoms] = make_ase_atoms
-            A function to convert the CASM structure to an ASE Atoms object. The
-            default function, :func:`make_ase_atoms` works for non-magnetic atomic
-            structures.
 
         Returns
         -------
@@ -342,8 +451,8 @@ class AseVaspTool:
     def report(
         self,
         calc_dir: pathlib.Path,
-        index: Any = None,
-    ) -> Union[xtal.Structure, list[xtal.Structure]]:
+        index: typing.Any = None,
+    ) -> typing.Union[xtal.Structure, list[xtal.Structure]]:
         """Report the results of a VASP calculation.
 
         Parameters
@@ -356,7 +465,7 @@ class AseVaspTool:
 
         Returns
         -------
-        results: Union[xtal.Structure, list[xtal.Structure]]
+        results: Union[libcasm.xtal.Structure, list[libcasm.xtal.Structure]]
             A CASM Structure or a list of CASM Structures, as specified by `index`.
         """
         value = ase.io.read(calc_dir / "OUTCAR", format="vasp-out", index=index)

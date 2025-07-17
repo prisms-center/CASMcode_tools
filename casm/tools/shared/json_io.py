@@ -1,3 +1,5 @@
+"""JSON input/output"""
+
 import gzip
 import json
 import os

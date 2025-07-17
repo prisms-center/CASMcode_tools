@@ -21,15 +21,15 @@ def make_equivalent_structures(
 
     Parameters
     ----------
-    structure : xtal.Structure
+    structure : libcasm.xtal.Structure
         The structure used to generate equivalents.
-    point_group : list[xtal.SymOp]
+    point_group : list[libcasm.xtal.SymOp]
         The point group symmetry operations to apply to the structure. To generate
         equivalent mapped child structures, use the point group of the parent.
 
     Returns
     -------
-    equivalent_structures : list[xtal.Structure]
+    equivalent_structures : list[libcasm.xtal.Structure]
     """
     equivalent_structures = []
     negative_determinant_structures = []
@@ -77,17 +77,17 @@ def make_equivalent_paths(
 
     Parameters
     ----------
-    path : list[xtal.Structure]
+    path : list[libcasm.xtal.Structure]
         A deformation pathway. The structure used to generate and compare equivalents
         is the last item in the list.
-    point_group : list[xtal.SymOp]
+    point_group : list[libcasm.xtal.SymOp]
         The point group symmetry operations to apply to the path. To generate
         equivalent deformation pathways from a parent structure to a child structure,
         use the point group of the parent.
 
     Returns
     -------
-    equivalent_paths : list[list[xtal.Structure]]
+    equivalent_paths : list[list[libcasm.xtal.Structure]]
         The outer list contains each path and the inner list contains the structures in
         the path.
     """

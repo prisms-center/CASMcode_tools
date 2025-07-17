@@ -29,7 +29,7 @@ def read_prim(
 
     Returns
     --------
-    xtal.Prim
+    libcasm.xtal.Prim
 
     """
     if symmetrize:
