@@ -9,6 +9,7 @@ import ase.io
 import numpy as np
 
 import casm.tools.shared.json_io as json_io
+import libcasm.configuration as casmconfig
 import libcasm.xtal as xtal
 
 
@@ -426,15 +427,20 @@ class AseVaspTool:
         self,
         casm_structure: xtal.Structure,
         calc_dir: pathlib.Path,
+        config: typing.Optional[casmconfig.Configuration] = None,
     ) -> ase.calculators.vasp.Vasp:
         """Setup a VASP calculation for a given structure.
 
         Parameters
         ----------
         casm_structure: libcasm.xtal.Structure
-            The structure to calculate.
+            The structure to calculate. The structure is written to the calculation
+            directory as `structure.json`.
         calc_dir: pathlib.Path
             The directory in which to store the calculation files.
+        config: Optional[libcasm.configuration.Configuration] = None
+            If provided, the configuration object associated with the structure is
+            printed to the calculation directory as `config.json`.
 
         Returns
         -------
@@ -446,11 +452,32 @@ class AseVaspTool:
 
         # Write INCAR, KPOINTS, POTCAR, POSCAR
         vasp_calculator.write_input(atoms=ase_atoms)
+
+        # Write structure.json file
+        structure_json_path = calc_dir / "structure.json"
+        json_io.safe_dump(
+            data=casm_structure.to_dict(),
+            path=structure_json_path,
+            force=True,
+            quiet=True,
+        )
+
+        if config is not None:
+            # Write configuration.json file
+            config_json_path = calc_dir / "config.json"
+            json_io.safe_dump(
+                data=config.to_dict(),
+                path=config_json_path,
+                force=True,
+                quiet=True,
+            )
+
         return vasp_calculator
 
     def report(
         self,
-        calc_dir: pathlib.Path,
+        calc_dir: typing.Optional[pathlib.Path] = None,
+        fd: typing.Union[str, pathlib.Path, typing.IO, None] = None,
         index: typing.Any = None,
     ) -> typing.Union[xtal.Structure, list[xtal.Structure]]:
         """Report the results of a VASP calculation.
@@ -468,7 +495,31 @@ class AseVaspTool:
         results: Union[libcasm.xtal.Structure, list[libcasm.xtal.Structure]]
             A CASM Structure or a list of CASM Structures, as specified by `index`.
         """
-        value = ase.io.read(calc_dir / "OUTCAR", format="vasp-out", index=index)
+        if calc_dir is None == fd is None:
+            raise ValueError(
+                "Error in AseVaspTool.report: "
+                "One and only one of calc_dir or fd must be provided"
+            )
+
+        if calc_dir:
+            outcar_file = calc_dir / "OUTCAR"
+            if outcar_file.exists():
+                value = ase.io.read(outcar_file, format="vasp-out", index=index)
+            else:
+                outcar_gz_file = calc_dir / "OUTCAR.gz"
+                if outcar_gz_file.exists():
+                    import gzip
+
+                    with gzip.open(outcar_gz_file, "rt") as f:
+                        value = ase.io.read(f, format="vasp-out", index=index)
+                else:
+                    raise FileNotFoundError(
+                        f"Error in AseVaspTool.report: "
+                        f"Neither OUTCAR nor OUTCAR.gz found in {calc_dir.as_posix()}"
+                    )
+        else:
+            print(fd)
+            value = ase.io.read(fd, format="vasp-out", index=index)
 
         if isinstance(value, ase.Atoms):
             results = self._make_casm_structure_f(value)
