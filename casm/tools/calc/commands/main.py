@@ -54,6 +54,19 @@ def main(argv=None, working_dir=None):
         working_dir = os.getcwd()
 
     parser = make_parser()
+
+    # if "--desc" is in the arguments, print the description:
+    if "--desc" in argv:
+
+        if "vasp" in argv:
+            from .vasp import print_desc
+
+            print_desc(argv=argv)
+            return 0
+        else:
+            parser.print_help()
+            return 1
+
     if len(argv) < 2:
         parser.print_help()
         return 1

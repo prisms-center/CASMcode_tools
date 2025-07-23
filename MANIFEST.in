@@ -1,0 +1,11 @@
+recursive-include casm/tools/calc/scripts *.sh
+recursive-include casm/tools/calc/scripts *.py
+graft doc
+prune doc/_build
+prune doc/reference/casm/_autosummary
+recursive-include tests *.py
+graft tests/data
+include pyproject.toml
+include setup.py
+include CHANGELOG.md README.md LICENSE
+include build_requirements.txt dev_requirements.txt doc_requirements.txt test_requirements.txt
