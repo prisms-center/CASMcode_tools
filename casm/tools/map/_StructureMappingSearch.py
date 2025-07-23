@@ -38,6 +38,593 @@ def floordiv(a, b):
     return a // b
 
 
+def _get_max_n_atoms_for_parent_structure(
+    max_n_atoms: Optional[int],
+    parent_structure: xtal.Structure,
+    child: xtal.Structure,
+):
+    """Get the maximum number of atoms to use when generating supercells of the child
+    when the parent is provided as a structure.
+
+    Parameters
+    ----------
+    max_n_atoms : Optional[int]
+        If provided, use this value. Otherwise, use the least common multiple of the
+        number of atoms in the child and parent structures.
+
+    Returns
+    -------
+    max_n_atoms: int
+        The maximum number of atoms to use when generating supercells of the child.
+    """
+    if max_n_atoms is not None:
+        return max_n_atoms
+
+    n_atoms_parent = len(parent_structure.atom_type())
+    n_atoms_child = len(child.atom_type())
+    return math.lcm(n_atoms_parent, n_atoms_child)
+
+
+def _get_max_n_atoms_for_parent_prim(
+    max_n_atoms: Optional[int],
+    child: xtal.Structure,
+):
+    """Get the maximum number of atoms to use when generating supercells of the child
+    when the parent is provided as a prim.
+
+    Parameters
+    ----------
+    max_n_atoms : Optional[int]
+        If provided, use the maximum of this value and the number of atoms in the child.
+        Otherwise, use the number of atoms in the child structure.
+
+    Returns
+    -------
+    max_n_atoms: int
+        The maximum number of atoms to use when generating supercells of the child.
+    """
+    if max_n_atoms is not None:
+        return max(max_n_atoms, len(child.atom_type()))
+    else:
+        return len(child.atom_type())
+
+
+def _make_child_to_parent_vol(
+    max_n_atoms: int,
+    parent_structure: xtal.Structure,
+    child: xtal.Structure,
+):
+    child_n_atoms = len(child.atom_type())
+    parent_n_atoms = len(parent_structure.atom_type())
+
+    child_to_parent_vol = {}
+    child_vol = 1
+    while child_vol * child_n_atoms <= max_n_atoms:
+        child_superstructure_n_atoms = child_n_atoms * child_vol
+        _vol = child_superstructure_n_atoms / parent_n_atoms
+
+        # if parent_vol is integer, then it is a valid supercell size:
+        if _vol.is_integer():
+            child_to_parent_vol[child_vol] = int(_vol)
+
+        child_vol += 1
+
+    return child_to_parent_vol
+
+
+def _make_T_pairs_for_parent_structure(
+    parent_structure: xtal.Structure,
+    child: xtal.Structure,
+    parent_prim: casmconfig.Prim,
+    min_n_atoms: int,
+    max_n_atoms: int,
+    child_T_list: Optional[list[np.ndarray]] = None,
+    parent_T_list: Optional[list[np.ndarray]] = None,
+):
+    """Make a list of (T_child, T_parent) pairs for the search when a parent structure
+    is given.
+
+    Parameters
+    ----------
+    parent_structure : xtal.Structure
+        The parent structure.
+    child : xtal.Structure
+        The child structure.
+    parent_prim : casmconfig.Prim
+        The primitive parent structure.
+    min_n_atoms : int
+        The minimum number of atoms in the superstructures that should be included
+        in the search.
+    max_n_atoms : Optional[int]
+        The maximum number of atoms in the superstructures that should be included
+        in the search.
+    child_T_list : Optional[list[np.ndarray]] = None
+        For the child superstructures, a list of transformation matrices
+        :math:`T_{2}` to use. If None, the child superstructures are enumerated
+        based on the `min_n_atoms` and `max_n_atoms` options.
+    parent_T_list : Optional[list[np.ndarray]] = None
+        For the parent superstructures, a list of transformation matrices
+        :math:`T_{1}` to use. If None, the parent superstructures are enumerated
+        based on the `min_n_atoms` and `max_n_atoms` options.
+
+    Returns
+    -------
+    T_pairs: list[tuple[np.ndarray, np.ndarray]]
+        List of (T_child, T_parent) pairs.
+
+    """
+    # Results, list of (T_child, T_parent) pairs
+    T_pairs = []
+
+    max_n_atoms = _get_max_n_atoms_for_parent_structure(
+        max_n_atoms=max_n_atoms,
+        parent_structure=parent_structure,
+        child=child,
+    )
+
+    # Parameters
+    child_crystal_point_group = xtal.make_structure_crystal_point_group(child)
+    child_n_atoms = len(child.atom_type())
+    child_to_parent_vol = _make_child_to_parent_vol(
+        max_n_atoms=max_n_atoms,
+        parent_structure=parent_structure,
+        child=child,
+    )
+
+    # If child_T_list is not provided, enumerate the child supercells
+    if child_T_list is None:
+        child_T_list = []
+
+        child_superlattices = xtal.enumerate_superlattices(
+            unit_lattice=child.lattice(),
+            point_group=child_crystal_point_group,
+            max_volume=floordiv(max_n_atoms, child_n_atoms),
+            min_volume=ceildiv(min_n_atoms, child_n_atoms),
+        )
+        for child_superlattice in child_superlattices:
+            child_T_list.append(
+                xtal.make_transformation_matrix_to_super(
+                    unit_lattice=child.lattice(),
+                    superlattice=child_superlattice,
+                )
+            )
+
+    # For each child superstructure...
+    for child_T in child_T_list:
+        child_vol = int(round(np.linalg.det(child_T)))
+
+        # If no valid parent volume, continue
+        if child_vol not in child_to_parent_vol:
+            continue
+        parent_vol = child_to_parent_vol[child_vol]
+
+        # Get the list of valid parent supercells
+        restricted_parent_T_list = []
+
+        # If parent_T_list is not provided, enumerate the parent supercells
+        if parent_T_list is None:
+            parent_superlattices = xtal.enumerate_superlattices(
+                unit_lattice=parent_structure.lattice(),
+                point_group=parent_prim.crystal_point_group.elements,
+                max_volume=parent_vol,
+                min_volume=parent_vol,
+            )
+            for parent_superlattice in parent_superlattices:
+                restricted_parent_T_list.append(
+                    xtal.make_transformation_matrix_to_super(
+                        unit_lattice=parent_structure.lattice(),
+                        superlattice=parent_superlattice,
+                    )
+                )
+
+        # If parent_T_list is provided, filter the parent supercells
+        else:
+            for parent_T in parent_T_list:
+                if int(round(np.linalg.det(parent_T))) == parent_vol:
+                    restricted_parent_T_list.append(parent_T)
+
+        # Add the (child_T, parent_T) pairs
+        for parent_T in restricted_parent_T_list:
+            T_pairs.append((child_T, parent_T))
+
+    return T_pairs
+
+
+class ParentVolumeSearchOptions:
+    """Options for parent supercell volume to search over when the specific supercells
+    have not been given.
+
+    Options are:
+
+    - "atoms-per-unitcell": Search a range of parent supercell sizes based on the
+      range of atoms per parent unit cell in which a mapping is expected to be found.
+    - "point-defect-count": Search a range of parent supercell sizes based on the
+      number of vacancies and interstitials expected to be found.
+    - "parent-volume-range": Explicitly give a range of parent supercell sizes to
+      search.
+
+    The default method is "atoms-per-unitcell" and the default range is
+    `(n_expected_atoms_per_parent_unitcell, n_expected_atoms_per_parent_unitcell)`,
+    where `n_expected_atoms_per_parent_unitcell` is by default the number of sites in
+    the `parent_prim` which do not have a vacancy as the first occupant. This results
+    in a single parent superstructure volume being searched, determined by the number
+    of atoms in the child structure.
+
+    """
+
+    def __init__(
+        self,
+        method: str = "atoms-per-unitcell",
+        expected_n_vacancy: Optional[int] = None,
+        expected_n_interstitial: Optional[int] = None,
+        parent_volume_range: Optional[tuple[int, int]] = None,
+        atoms_per_unitcell_range: Optional[tuple[float, float]] = None,
+        n_expected_atoms_per_parent_unitcell: Optional[int] = None,
+    ):
+        """
+
+        .. rubric:: Constructor
+
+        """
+
+        self.method: str = method
+        """str: Method used to determine the range of parent supercell sizes to search,
+        if parent supercells are not explicitly provided.
+        
+        Options are:
+        
+        - "atoms-per-unitcell": Search a range of parent supercell sizes based on the
+          number of atoms per parent unit cell expected to be found.
+        - "point-defect-count": Search at a single parent supercell size determined 
+          from the expected number of vacancies and interstitials.
+        - "parent-volume-range": Explicitly give a range of parent supercell sizes.
+        """
+
+        self.expected_n_vacancy: Optional[int] = expected_n_vacancy
+        """Optional[int]: The number of vacancies expected after mapping, if the 
+        `method` is set to "point-defect-count"."""
+
+        self.expected_n_interstitial: Optional[int] = expected_n_interstitial
+        """Optional[int]: The number of interstitials expected after mapping, if the 
+        `method` is set to "point-defect-count"."""
+
+        self.parent_volume_range: Optional[tuple[int, int]] = parent_volume_range
+        """Optional[tuple[int, int]]: The range of parent supercell sizes to search,
+        if `method` is set to "parent-volume-range". 
+        
+        This is a tuple of ``(min, max)`` volume, as integer multiple of the parent 
+        prim."""
+
+        self.atoms_per_unitcell_range: Optional[tuple[float, float]] = (
+            atoms_per_unitcell_range
+        )
+        """Optional[tuple[float, float]]: The range of atoms per parent unit cell to
+        search, if `method` is set to "atoms-per-unitcell"."""
+
+        self.n_expected_atoms_per_parent_unitcell: Optional[int] = (
+            n_expected_atoms_per_parent_unitcell
+        )
+        """Optional[int]: The number of atoms expected in the parent unit cell if there
+        are no point defects, used if `method` is set to "point-defect-count".
+
+        By default, the number of sites in the `parent_prim` which do not have a 
+        vacancy as the first occupant is used. If this is provided, it overrides the
+        default value."""
+
+    def to_dict(self) -> dict:
+        """Convert the options to a dictionary."""
+        return {
+            "method": self.method,
+            "expected_n_vacancy": self.expected_n_vacancy,
+            "expected_n_interstitial": self.expected_n_interstitial,
+            "parent_volume_range": self.parent_volume_range,
+            "atoms_per_unitcell_range": self.atoms_per_unitcell_range,
+            "n_expected_atoms_per_parent_unitcell": (
+                self.n_expected_atoms_per_parent_unitcell
+            ),
+        }
+
+    @staticmethod
+    def from_dict(data: dict) -> "ParentVolumeSearchOptions":
+        """Create a ParentVolumeSearchOptions object from a dictionary."""
+        return ParentVolumeSearchOptions(
+            method=data.get("method", "atoms-per-unitcell"),
+            expected_n_vacancy=data.get("expected_n_vacancy"),
+            expected_n_interstitial=data.get("expected_n_interstitial"),
+            parent_volume_range=data.get("parent_volume_range"),
+            atoms_per_unitcell_range=data.get("atoms_per_unitcell_range"),
+            n_expected_atoms_per_parent_unitcell=data.get(
+                "n_expected_atoms_per_parent_unitcell"
+            ),
+        )
+
+    def parent_vol_range(
+        self,
+        child: xtal.Structure,
+        parent_prim: casmconfig.Prim,
+        child_vol: int,
+    ):
+        """Return the parent volume range as a tuple of (min, max) integer volumes.
+
+        Parameters
+        ----------
+        child: xtal.Structure
+            The child structure
+        parent_prim: casmconfig.Prim
+            The parent prim
+        child_vol: int
+            The volume of the child supercell, as an integer multiple of the
+            child structure.
+
+        Returns
+        -------
+        min_parent_vol: int
+            The minimum parent volume to search, as an integer multiple of the parent
+            prim volume.
+
+        max_parent_vol: int
+            The maximum parent volume to search, as an integer multiple of the parent
+            prim volume.
+
+        """
+
+        vacancy_names = ["Va", "va", "VA"]
+        if self.n_expected_atoms_per_parent_unitcell is not None:
+            _expected_per = self.n_expected_atoms_per_parent_unitcell
+        else:
+            _expected_per = 0
+            occ_dof = parent_prim.xtal_prim.occ_dof()
+            for site_dof in occ_dof:
+                if len(site_dof):
+                    if site_dof[0] not in vacancy_names:
+                        _expected_per += 1
+
+        n_child_atoms = len(child.atom_type()) * child_vol
+
+        if self.method == "atoms-per-unitcell":
+            atoms_per_unitcell_range = self.atoms_per_unitcell_range
+            if atoms_per_unitcell_range is None:
+                atoms_per_unitcell_range = (_expected_per, _expected_per)
+
+            # validate that self.atoms_per_unitcell_range is a tuple[float, float]:
+            if (
+                not isinstance(atoms_per_unitcell_range, tuple)
+                or len(atoms_per_unitcell_range) != 2
+                or not all(
+                    isinstance(x, (int, float)) for x in atoms_per_unitcell_range
+                )
+            ):
+                raise ValueError(
+                    "Error in ParentVolumeSearchOptions: "
+                    "method is 'atoms-per-unitcell', "
+                    "but atoms_per_unitcell_range is not a tuple of two numbers."
+                )
+            if (
+                atoms_per_unitcell_range[0] <= 0.0
+                or atoms_per_unitcell_range[1] <= 0.0
+                or atoms_per_unitcell_range[0] > atoms_per_unitcell_range[1]
+            ):
+                raise ValueError(
+                    "Error in ParentVolumeSearchOptions: "
+                    "'atoms_per_unitcell_range' must be a tuple of two positive "
+                    "numbers, where the first is less than or equal to the second."
+                )
+            _min_per, _max_per = self.atoms_per_unitcell_range
+            min_parent_vol = int(math.floor(n_child_atoms / _max_per))
+            max_parent_vol = int(math.ceil(n_child_atoms / _min_per))
+            return (min_parent_vol, max_parent_vol)
+
+        elif self.method == "point-defect-count":
+            n_atoms = n_child_atoms
+            n_atoms -= self.expected_n_interstitial
+            n_atoms += self.expected_n_vacancy
+
+            parent_vol = n_atoms / _expected_per
+
+            # check if parent_vol is approximately integer:
+            if not np.isclose(parent_vol, round(parent_vol), atol=1e-5):
+                raise ValueError(
+                    "Error in ParentVolumeSearchOptions: "
+                    "method is 'point-defect-count', but the expected number of "
+                    "vacancies and interstitials does not result in an integer "
+                    "parent supercell volume."
+                )
+
+            parent_vol = int(round(parent_vol))
+
+            return (parent_vol, parent_vol)
+
+        elif self.method == "parent-volume-range":
+            if self.parent_volume_range is None:
+                raise ValueError(
+                    "Error in ParentVolumeSearchOptions: "
+                    "method is 'parent-volume-range', but no parent_volume_range "
+                    "is provided."
+                )
+            # validate that self.parent_volume_range is a tuple[int, int]:
+            if (
+                not isinstance(self.parent_volume_range, tuple)
+                or len(self.parent_volume_range) != 2
+                or not all(isinstance(x, int) for x in self.parent_volume_range)
+            ):
+                raise ValueError(
+                    "Error in ParentVolumeSearchOptions: "
+                    "method is 'parent-volume-range', "
+                    "but parent_volume_range is not a tuple of two integers."
+                )
+            if (
+                self.parent_volume_range[0] < 1
+                or self.parent_volume_range[1] < 1
+                or self.parent_volume_range[0] > self.parent_volume_range[1]
+            ):
+                raise ValueError(
+                    "Error in ParentVolumeSearchOptions: "
+                    "'parent_volume_range' must be a tuple of two positive integers, "
+                    "where the first is less than or equal to the second."
+                )
+
+            return self.parent_volume_range
+
+        else:
+            raise ValueError(
+                "Error in ParentVolumeSearchOptions: "
+                f"method={self.method} is not a valid option"
+            )
+
+
+def _make_T_pairs_for_parent_prim(
+    child: xtal.Structure,
+    parent_prim: casmconfig.Prim,
+    child_atom_counts_of_parent_types: np.ndarray,
+    min_atom_count_per_parent_unitcell: np.ndarray,
+    max_atom_count_per_parent_unitcell: np.ndarray,
+    min_n_atoms: int = 1,
+    max_n_atoms: Optional[int] = None,
+    child_T_list: Optional[list[np.ndarray]] = None,
+    parent_T_list: Optional[list[np.ndarray]] = None,
+    parent_vol_options: Optional[ParentVolumeSearchOptions] = None,
+):
+    """Make a list of (T_child, T_parent) pairs for the search when a parent structure
+    is given.
+
+    Method:
+
+    1. Determine child supercells to search. If provided, use `child_T_list`. Otherwise,
+       enumerate supercells based on the number of atoms in the child structure and the
+       `min_n_atoms` and `max_n_atoms` options.
+    2. For each child supercell, determine the parent supercells to try to map to. If
+       provided, use `parent_T_list`. Otherwise, enumerate parent supercells based on
+       `parent_vol_options`.
+    3. Finally, filter out parent supercells that are impossible based on the
+       `child_atom_counts_of_parent_types`, `min_atom_count_per_parent_unitcell`, and
+       `max_atom_count_per_parent_unitcell` parameters.
+       `
+
+    Parameters
+    ----------
+    child : xtal.Structure
+        The child structure.
+    parent_prim : casmconfig.Prim
+        The primitive parent structure.
+    child_atom_counts_of_parent_types: np.ndarray
+        The number of atoms of each parent type in the child structure.
+    min_atom_count_per_parent_unitcell: np.ndarray
+        The minimum number of each parent type per parent unit cell.
+    max_atom_count_per_parent_unitcell: np.ndarray
+        The maximum number of each parent type per parent unit cell.
+    min_n_atoms : int
+        The minimum number of atoms in the superstructures that should be included
+        in the search.
+    max_n_atoms : Optional[int]
+        The maximum number of atoms in the superstructures that should be included
+        in the search. If provided, use the maximum of this value and the number of
+        atoms in the child. Otherwise, use the number of atoms in the child structure.
+    child_T_list : Optional[list[np.ndarray]] = None
+        For the child superstructures, a list of transformation matrices
+        :math:`T_{2}` to use. If None, the child superstructures are enumerated
+        based on the `min_n_atoms` and `max_n_atoms` options.
+    parent_T_list : Optional[list[np.ndarray]] = None
+        For the parent superstructures, a list of transformation matrices
+        :math:`T_{1}` to use. If None, the parent superstructures are enumerated
+        based on the `min_n_atoms` and `max_n_atoms` options.
+    parent_vol_options : Optional[ParentVolumeSearchOptions] = None
+        Options for the parent supercell volumes to search over when the specific
+        supercells have not been given. If None, the default options are used,
+        which is to search a single parent supercell size based on the number of
+        atoms in the child structure.
+
+    Returns
+    -------
+    T_pairs: list[tuple[np.ndarray, np.ndarray]]
+        List of (T_child, T_parent) pairs.
+
+    """
+    # Results, list of (T_child, T_parent) pairs
+    T_pairs = []
+
+    max_n_atoms = _get_max_n_atoms_for_parent_prim(
+        max_n_atoms=max_n_atoms,
+        child=child,
+    )
+
+    # Parameters
+    child_crystal_point_group = xtal.make_structure_crystal_point_group(child)
+    child_n_atoms = len(child.atom_type())
+
+    # If child_T_list is not provided, enumerate the child supercells
+    if child_T_list is None:
+        child_T_list = []
+
+        child_superlattices = xtal.enumerate_superlattices(
+            unit_lattice=child.lattice(),
+            point_group=child_crystal_point_group,
+            max_volume=floordiv(max_n_atoms, child_n_atoms),
+            min_volume=ceildiv(min_n_atoms, child_n_atoms),
+        )
+        for child_superlattice in child_superlattices:
+            child_T_list.append(
+                xtal.make_transformation_matrix_to_super(
+                    unit_lattice=child.lattice(),
+                    superlattice=child_superlattice,
+                )
+            )
+
+    # If parent_T_list is not provided, generate possible parent supercells for each
+    # child supercell
+    for child_T in child_T_list:
+        child_vol = int(round(np.linalg.det(child_T)))
+        superchild_atom_counts = child_atom_counts_of_parent_types * child_vol
+
+        # Get the list of valid parent supercells
+
+        # If parent_T_list is not provided,
+        # then enumerate parent supercells based on `parent_vol_options`
+        if parent_T_list is None:
+            parent_T_list = []
+            if parent_vol_options is None:
+                parent_vol_options = ParentVolumeSearchOptions()
+            parent_vol_range = parent_vol_options.parent_vol_range(
+                child=child,
+                parent_prim=parent_prim,
+                child_vol=child_vol,
+            )
+            parent_superlattices = xtal.enumerate_superlattices(
+                unit_lattice=parent_prim.xtal_prim.lattice(),
+                point_group=parent_prim.crystal_point_group.elements,
+                max_volume=parent_vol_range[0],
+                min_volume=parent_vol_range[1],
+            )
+            for parent_superlattice in parent_superlattices:
+                parent_T_list.append(
+                    xtal.make_transformation_matrix_to_super(
+                        unit_lattice=parent_prim.xtal_prim.lattice(),
+                        superlattice=parent_superlattice,
+                    )
+                )
+
+        # Filter parent_T_list based on the child atom counts and the
+        # min/max atom counts per parent unit cell
+        restricted_parent_T_list = []
+        for parent_T in parent_T_list:
+            parent_vol = int(round(np.linalg.det(parent_T)))
+
+            # Check if the parent atom counts are within the min/max range
+            if np.all(
+                superchild_atom_counts
+                >= min_atom_count_per_parent_unitcell * parent_vol
+            ) and np.all(
+                superchild_atom_counts
+                <= max_atom_count_per_parent_unitcell * parent_vol
+            ):
+                restricted_parent_T_list.append(parent_T)
+
+        # Add the (child_T, parent_T) pairs
+        for parent_T in restricted_parent_T_list:
+            T_pairs.append((child_T, parent_T))
+
+    return T_pairs
+
+
 class StructureMappingSearchOptions:
     """Options controlling the structure mapping search."""
 
@@ -207,7 +794,7 @@ class StructureMappingSearchOptions:
         }
 
     @staticmethod
-    def from_dict(data):
+    def from_dict(data: dict):
         return StructureMappingSearchOptions(
             max_n_atoms=data["max_n_atoms"],
             min_n_atoms=data["min_n_atoms"],
@@ -247,7 +834,7 @@ class StructureMappingSearchOptions:
                 if data["forced_off"] is not None
                 else None
             ),
-            lattice_cost_weight=["lattice_cost_weight"],
+            lattice_cost_weight=data["lattice_cost_weight"],
             cost_tol=data["cost_tol"],
             deduplication_interpolation_factors=data[
                 "deduplication_interpolation_factors"
@@ -264,15 +851,12 @@ class MappingSearchData:
         mappings: list[mapinfo.ScoredStructureMapping] = [],
         uuids: list[str] = [],
         options_history: list[StructureMappingSearchOptions] = [],
-        results_dir: Optional[pathlib.Path] = None,
     ):
-
-        if results_dir is None:
-            results_dir = pathlib.Path("results").resolve()
 
         if isinstance(parent, xtal.Structure):
             parent_structure = parent
-            parent_prim = casmconfig.Prim.from_atom_coordinates(structure=parent)
+            xtal_prim = xtal.Prim.from_atom_coordinates(structure=parent)
+            parent_prim = casmconfig.Prim(xtal_prim)
         elif isinstance(parent, casmconfig.Prim):
             parent_structure = None
             parent_prim = parent
@@ -290,8 +874,11 @@ class MappingSearchData:
         """casmconfig.Prim: The :class:`~libcasm.configuration.Prim` for the parent, 
         which determines allowed occupants on each basis site."""
 
-        self.child_structure: xtal.Structure = child
+        self.child: xtal.Structure = child
         """Optional[xtal.Structure]: The child structure, with lattice :math:`L_{2}`."""
+
+        self.options: Optional[StructureMappingSearchOptions] = options
+        """Optional[StructureMappingSearchOptions]: Options for the current search."""
 
         self.mappings: list[mapinfo.ScoredStructureMapping] = mappings
         """list[mapinfo.ScoredStructureMapping]: The list of scored structure mappings
@@ -304,8 +891,351 @@ class MappingSearchData:
         """list[StructureMappingSearchOptions]: A history of options used by previous
         searches."""
 
-        self.options: Optional[StructureMappingSearchOptions] = options
-        """Optional[StructureMappingSearchOptions]: Options for the current search."""
+    @property
+    def parent_atom_types(self):
+        """list[str]: The list of atom types in the parent structure, sorted."""
+        if self.parent_structure is not None:
+            parent_atom_types = set(self.parent_structure.atom_type())
+        else:
+            occ_dof = self.parent_prim.xtal_prim.occ_dof()
+            parent_atom_types = {name for site_dof in occ_dof for name in site_dof}
+        return sorted(list(parent_atom_types))
+
+    @property
+    def parent_atom_frac(self):
+        """Optional[np.ndarray]: The fraction of each atom type in the parent, in
+        order corresponding to `parent_atom_types`.
+
+        If `parent_structure` is None, or has no atoms, the value is None."""
+        if self.parent_structure is None:
+            return None
+        if len(self.parent_structure.atom_type()) == 0:
+            return None
+        _atom_types = self.parent_atom_types
+        _atom_count = [0] * len(_atom_types)
+        for atom_type in self.parent_structure.atom_type():
+            _atom_count[_atom_types.index(atom_type)] += 1
+        _atom_counts = np.array(_atom_count)
+        total = np.sum(_atom_counts)
+        return _atom_counts / total
+
+    @property
+    def min_atom_count_per_parent_unitcell(self):
+        """np.array: The minimum number of atoms per parent unit cell of each type, in
+        order corresponding to `parent_atom_types`."""
+        _atom_types = self.parent_atom_types
+        _atom_count = [0] * len(_atom_types)
+        if self.parent_structure is not None:
+            for atom_type in self.parent_structure.atom_type():
+                _atom_count[_atom_types.index(atom_type)] += 1
+        else:
+            occ_dof = self.parent_prim.xtal_prim.occ_dof()
+            for site_dof in occ_dof:
+                if len(site_dof) == 1:
+                    _atom_count[_atom_types.index(site_dof[0])] += 1
+        return np.array(_atom_count)
+
+    @property
+    def max_atom_count_per_parent_unitcell(self):
+        """np.array: The maximum number of atoms per parent unit cell of each type, in
+        order corresponding to `parent_atom_types`."""
+        _atom_types = self.parent_atom_types
+        _atom_count = [0] * len(_atom_types)
+        if self.parent_structure is not None:
+            for atom_type in self.parent_structure.atom_type():
+                _atom_count[_atom_types.index(atom_type)] += 1
+        else:
+            occ_dof = self.parent_prim.xtal_prim.occ_dof()
+            for site_dof in occ_dof:
+                for name in site_dof:
+                    _atom_count[_atom_types.index(name)] += 1
+        return np.array(_atom_count)
+
+    @property
+    def child_atom_count(self):
+        """np.array: The number of atoms in the child of each type, in
+        order corresponding to `child_atom_types`."""
+        _atom_types = self.child_atom_types
+        _atom_count = [0] * len(_atom_types)
+        for atom_type in self.child_structure.atom_type():
+            index = _atom_types.index(atom_type)
+            if index >= 0:
+                _atom_count[index] += 1
+        return np.array(_atom_count)
+
+    @property
+    def child_atom_count_of_parent_types(self):
+        """np.array: The number of atoms in the child of each parent type, in
+        order corresponding to `parent_atom_types`."""
+        _atom_types = self.parent_atom_types
+        _atom_count = [0] * len(_atom_types)
+        for atom_type in self.child_structure.atom_type():
+            index = _atom_types.index(atom_type)
+            if index >= 0:
+                _atom_count[index] += 1
+        return np.array(_atom_count)
+
+    @property
+    def child_atom_types(self):
+        """list[str]: The list of atom types in the child structure, sorted."""
+        child_atom_types = set(self.child.atom_type())
+        return sorted(list(child_atom_types))
+
+    @property
+    def child_atom_frac(self):
+        """Optional[np.ndarray]: The fraction of each atom type in the child, in
+        order corresponding to `child_atom_types`.
+
+        If `child` has no atoms, return None."""
+        if len(self.child.atom_type()) == 0:
+            return None
+        _atom_types = self.child_atom_types
+        _atom_count = [0] * len(_atom_types)
+        for atom_type in self.child.atom_type():
+            _atom_count[_atom_types.index(atom_type)] += 1
+        _atom_counts = np.array(_atom_count)
+        total = np.sum(_atom_counts)
+        return _atom_counts / total
+
+    def validate_atom_types(self):
+        """Validate parent and child atom types are consistent
+
+        If `parent_structure` is not None, check that the atom types in the parent
+        structure and child structure are the same.
+
+        If `parent_structure` is None, check that the atom types in the child structure
+        are a subset of the atom types in the parent prim.
+
+        If the check fails, print an error message and exit.
+
+        """
+        if self.parent_structure is not None:
+            if set(self.parent_atom_types) != set(self.child_atom_types):
+                atom_types_mismatch_error(self.parent_atom_types, self.child_atom_types)
+        else:
+            if not set(self.child_atom_types).issubset(set(self.parent_atom_types)):
+                atom_types_mismatch_error(self.parent_atom_types, self.child_atom_types)
+
+    def validate_atom_frac(self):
+        """Validate the parent and child atom fractions are consistent.
+
+        If `parent_structure` is not None, check that the atom fractions in the parent
+        structure and child structure are the same.
+        """
+        if self.parent_structure is not None:
+            if not np.allclose(self.parent_atom_frac, self.child_atom_frac, atol=1e-5):
+                atom_fraction_mismatch_error(
+                    self.parent_atom_frac, self.child_atom_frac
+                )
+
+    def validate_forced_on(self):
+        """Validate `forced_on` values, if the parent_structure is given
+
+        If `parent_structure` is not None, check that the `--forced-on` option maps
+        parent and child atoms of the same type.
+
+        If `parent_structure` is None, this method currently does nothing.
+
+        The `forced_on` values are also validated before atom mapping.
+
+        """
+        if self.parent_structure is None:
+            return
+        _allowed = [list([x]) for x in self.parent_structure.atom_type()]
+        _child_types = self.child.atom_type()
+        for parent_site_index, child_atom_index in self.opt.forced_on.items():
+            child_type = _child_types[child_atom_index]
+            if child_type not in _allowed[parent_site_index]:
+                invalid_forced_on_values_error(
+                    parent_site_index=parent_site_index,
+                    child_atom_index=child_atom_index,
+                    child_type=child_type,
+                    allowed_types=_allowed[parent_site_index],
+                )
+
+    def validate_fix_parent(self):
+        """Validate `fix_parent` option, if the parent_structure is given
+
+        If `parent_structure` is not None, check that the `--fix-parent` option is used
+        only when the number of atoms in the parent structure is the same as the number
+        of atoms in the child structure.
+
+        If `parent_structure` is None, this method currently does nothing.
+
+        """
+        if self.parent_structure is None:
+            return
+        if self.opt.fix_parent:
+            child_n_atoms = len(self.child.atom_type())
+            parent_n_atoms = len(self.parent_structure.atom_type())
+            if child_n_atoms != parent_n_atoms:
+                invalid_fix_parent_error()
+
+    def notify_if_non_primitive(self):
+        """Print a notice if the parent or child is not primitive, and write
+        the primitive form to a file.
+
+        If the parent is not primitive, write its primitive form to
+        `parent.primitive.json`. If parent_structure is not None, it is checked.
+        Otherwise, the parent_prim is checked.
+
+        If the child is not primitive, write its primitive form to
+        `child.primitive.json`.
+        """
+        if self.parent_structure is not None:
+            parent = self.parent_structure
+            primitive_parent = xtal.make_primitive_structure(parent)
+            if len(primitive_parent.atom_type()) != len(parent.atom_type()):
+                safe_dump(
+                    xtal.pretty_json(primitive_parent.to_dict()),
+                    path="parent.primitive.json",
+                    force=True,
+                    quiet=True,
+                )
+                primitive_parent_notice()
+        else:
+            parent = self.parent_structure
+            primitive_parent = xtal.make_primitive_prim(parent)
+            if len(primitive_parent.occ_dof()) != len(parent.occ_dof()):
+                safe_dump(
+                    xtal.pretty_json(primitive_parent.to_dict()),
+                    path="parent.primitive.json",
+                    force=True,
+                    quiet=True,
+                )
+                primitive_parent_notice()
+
+        primitive_child = xtal.make_primitive_structure(self.child)
+        if len(primitive_child.atom_type()) != len(self.child.atom_type()):
+            safe_dump(
+                xtal.pretty_json(primitive_child.to_dict()),
+                path="child.primitive.json",
+                force=True,
+                quiet=True,
+            )
+            primitive_child_notice()
+
+    def validate_n_atoms(self):
+        """Validate the min_n_atoms and max_n_atoms options.
+
+        If `child_transformation_matrix_to_super_list` is None, this does nothing
+        because the user has requested which child supercells to try mapping.
+
+        Otherwise, it checks that the `min_n_atoms` >= 1 and that `max_n_atoms` is
+        greater than or equal to `min_n_atoms`. If the user does not specify
+        `max_n_atoms` explicitly, it is computed using the least common multiple of the
+        number of atoms in the parent and child structures.
+
+        """
+        if self.options.child_transformation_matrix_to_super_list is None:
+
+            min_n_atoms = self.options.min_n_atoms
+            max_n_atoms = _get_max_n_atoms_for_parent_structure(
+                max_n_atoms=self.options.max_n_atoms,
+                parent_structure=self.parent_structure,
+                child=self.child,
+            )
+
+            # Validate the min/max number of atoms
+            if min_n_atoms < 1:
+                invalid_min_n_atoms_error(min_n_atoms=min_n_atoms)
+
+            if self.parent_structure is not None:
+
+                if max_n_atoms < min_n_atoms:
+                    computed_msg = (
+                        "(computed from lcm of atom counts)"
+                        if self.options.max_n_atoms is None
+                        else ""
+                    )
+                    invalid_max_n_atoms_error(
+                        min_n_atoms=min_n_atoms,
+                        max_n_atoms=max_n_atoms,
+                        computed_msg=computed_msg,
+                    )
+
+    def move_options_to_history(self):
+        """Move the current options to the options history."""
+        if self.options is not None:
+            self.options_history.append(self.options)
+            self.options = None
+
+    def to_dict(self):
+        """Convert the search data to a Python dictionary.
+
+        Notes
+        -----
+
+        This does not move the current options to the options history. Use
+        :func:`move_options_to_history` before calling this method if you want to
+        include the current options in the history.
+
+        Returns
+        -------
+        data: dict
+            A Python dict representation of the search data.
+
+        """
+        return {
+            "parent_structure": (
+                self.parent_structure.to_dict() if self.parent_structure else None
+            ),
+            "parent_prim": self.parent_prim.to_dict(),
+            "child": self.child.to_dict(),
+            "options": self.options.to_dict() if self.options else None,
+            "mappings": [mapping.to_dict() for mapping in self.mappings],
+            "uuids": self.uuids,
+            "options_history": [opt.to_dict() for opt in self.options_history],
+        }
+
+    @staticmethod
+    def from_dict(
+        self,
+        data: dict,
+    ):
+        """Create a MappingSearchData object from a Python dictionary.
+
+        Parameters
+        ----------
+        data: dict
+            A Python dict representation of the search data.
+
+        Returns
+        -------
+        search_data: MappingSearchData
+            The MappingSearchData object created from the dictionary.
+
+        """
+        parent_structure = (
+            xtal.Structure.from_dict(data["parent_structure"])
+            if data["parent_structure"] is not None
+            else None
+        )
+        parent_prim = casmconfig.Prim.from_dict(data["parent_prim"])
+        child = xtal.Structure.from_dict(data["child"])
+        options = (
+            StructureMappingSearchOptions.from_dict(data["options"])
+            if data["options"] is not None
+            else None
+        )
+        mappings = [
+            mapinfo.ScoredStructureMapping.from_dict(data=x, prim=parent_prim.xtal_prim)
+            for x in data["mappings"]
+        ]
+        uuids = data["uuids"]
+        options_history = [
+            StructureMappingSearchOptions.from_dict(data=x)
+            for x in data["options_history"]
+        ]
+
+        return MappingSearchData(
+            parent=parent_structure or parent_prim,
+            child=child,
+            options=options,
+            mappings=mappings,
+            uuids=uuids,
+            options_history=options_history,
+        )
 
 
 class SearchResult:
@@ -340,12 +1270,40 @@ class SearchResult:
         chains, put into primitive, canonical form for use in deduplication."""
 
 
+def update_options_to_next_n_atoms(
+    self,
+    options: StructureMappingSearchOptions,
+    results_dir: pathlib.Path,
+):
+
+    n_atoms_parent = len(self.parent.atom_type())
+    n_atoms_child = len(self.child.atom_type())
+    n_atoms_lcm = math.lcm(n_atoms_parent, n_atoms_child)
+
+    last_max_n_atoms = None
+    if len(self.options_history):
+        if self.options_history[-1].max_n_atoms is None:
+            last_max_n_atoms = n_atoms_lcm
+        else:
+            last_max_n_atoms = self.options_history[-1].max_n_atoms
+
+    if last_max_n_atoms is None:
+        next_max_n_atoms = n_atoms_lcm
+    else:
+        next_max_n_atoms = 0
+        while next_max_n_atoms <= last_max_n_atoms:
+            next_max_n_atoms += n_atoms_lcm
+
+    options.max_n_atoms = next_max_n_atoms
+    options.min_n_atoms = next_max_n_atoms
+
+
 def results_dir_exists_error(results_dir: pathlib.Path) -> None:
     """Print an error message if the results directory already exists."""
 
     error = f"""
 ################################################################################
-# Error: results directory already exists                                      #
+# Error: Results directory already exists                                      #
 #                                                                              #
 # A directory already exists at the specified path.                            #
 #                                                                              #
@@ -357,6 +1315,40 @@ def results_dir_exists_error(results_dir: pathlib.Path) -> None:
 # Stopping...                                                                  #
 ################################################################################
 """
+    print(error)
+    sys.exit(1)
+
+
+def atom_types_mismatch_error(parent_atom_types, child_atom_types) -> None:
+    """Print an error message if the parent and child atom types do not match."""
+    error = f"""
+    ################################################################################
+    # Error: Child cannot map to parent due to atom types mismatch                 #
+    #                                                                              #
+    
+    - Parent atom types: {parent_atom_types}
+    - Child atom types: {child_atom_types}
+    
+    # Stopping...                                                                  #
+    ################################################################################
+    """
+    print(error)
+    sys.exit(1)
+
+
+def atom_fraction_mismatch_error(parent_atom_frac, child_atom_frac) -> None:
+    """Print an error message if the parent and child atom types do not match."""
+    error = f"""
+    ################################################################################
+    # Error: Parent and child structures have different atom fractions             #
+    #                                                                              #
+
+    - Parent atom fraction: {parent_atom_frac}
+    - Child atom fraction: {child_atom_frac}
+
+    # Stopping...                                                                  #
+    ################################################################################
+    """
     print(error)
     sys.exit(1)
 
@@ -394,7 +1386,6 @@ def invalid_fix_parent_error() -> None:
     child structure that have different numbers of atoms."""
 
     error = """
-################################################################################
 ################################################################################
 # Error: --fix-parent requires parent and child w/ same number of atoms.       #
 #                                                                              #
@@ -478,15 +1469,31 @@ def different_atom_mapping_cost_method_error() -> None:
     sys.exit(1)
 
 
+def different_lattice_cost_weight_error() -> None:
+    """When merging, print an error message if the lattice cost weight has changed."""
+
+    error = """
+################################################################################
+# Error: lattice cost weight has changed                                       #
+#                                                                              #
+# When using the --merge option, the lattice cost weight must remain the same. #
+#                                                                              #
+# Stopping...                                                                  #
+################################################################################
+"""
+    print(error)
+    sys.exit(1)
+
+
 def primitive_parent_notice() -> None:
-    """Write a notice to the console that the parent structure is not primitive."""
+    """Write a notice to the console that the parent is not primitive."""
 
     notice = """
 ################################################################################
 # Notice: parent is not primitive                                              #
-# Writing primitive parent structure: parent.primitive.json                    #
+# Writing primitive parent: parent.primitive.json                              #
 #                                                                              #
-# The parent structure is not primitive, and the search will continue with the #
+# The parent is not primitive, and the search will continue with the           #
 # non-primitive parent structure. If you want to use the primitive parent,     #
 # please use the file `parent.primitive.json` instead.                         #
 ################################################################################
@@ -1030,6 +2037,12 @@ class StructureMappingSearch:
                     != last_options.atom_mapping_cost_method
                 ):
                     different_atom_mapping_cost_method_error()
+                if not math.isclose(
+                    self.opt.lattice_cost_weight,
+                    last_options.lattice_cost_weight,
+                    abs_tol=1e-5,
+                ):
+                    different_lattice_cost_weight_error()
 
         self.validate(parent, child)
 

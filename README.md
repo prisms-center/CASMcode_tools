@@ -26,6 +26,17 @@ Methods for searching for low-cost lattice, atom, and structure mappings, taking
 See the [casm docs](https://prisms-center.github.io/CASMcode_pydocs/casm/overview/latest/).
 
 
+#### Instal Zsh Completions
+
+To install Zsh completions, cp the completions function to your custom completions directory:
+
+    cp completions/zsh/_casm_map ~/.oh-my-zsh/custom/completions/_casm-map
+
+Then reload your shell or run:
+
+    compinit
+
+
 #### About CASM
 
 The casm-map package is part of the [CASM](https://prisms-center.github.io/CASMcode_docs/) open source software package, which is designed to perform first-principles statistical mechanical studies of multi-component crystalline solids.

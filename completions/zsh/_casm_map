@@ -5,11 +5,11 @@ _casm-map() {
     typeset -A opt_args
 
     # _arguments -C \
-    #  '1:command:(search write)' \
+    #  '1:command:(search search2 write)' \
     #  '*::options:->args'
 
     _arguments -C \
-      '1:command:_values "commands" "search[Search for structure mappings]" "write[Write structure mappings to files]"' \
+      '1:command:_values "commands" "search[Search for structure mappings]" "search2[New search for structure mappings]" "write[Write structure mappings to files]"' \
       '*::options:->args'
 
     case $state in
@@ -18,6 +18,10 @@ _casm-map() {
           search)
             # Completions specific to the 'search' subcommand
             _casm-map_search_arguments
+            ;;
+          search2)
+            # Completions specific to the 'search' subcommand
+            _casm-map_search2_arguments
             ;;
           write)
             # Completions specific to the 'write' subcommand
@@ -29,6 +33,40 @@ _casm-map() {
 }
 
 _casm-map_search_arguments() {
+  _arguments \
+    '(-h --help)'{-h,--help}"[show this help message and exit]" \
+    '--min-n-atoms[Minimum number of atoms in superstructures (int)]' \
+    '--max-n-atoms[Maximum number of atoms in superstructures (int)]' \
+    '--min-total-cost[Minimum total cost (float)]' \
+    '--max-total-cost[Maximum total cost (float)]' \
+    '--k-best[Total number of mapping results (int)]' \
+    '--cost-tol[Cost tolerance for approximate ties (float)]' \
+    '--lattice-cost-weight[Fraction of total cost due to lattice cost (float)]' \
+    '--iso-cost[Use isotropic strain and disp costs]' \
+    '--no-remove-mean-displacement[Do not remove the mean displacement from the structure mappings]' \
+    '--fix-parent[Map to parent structure as provided; skip checking superstructures and lattice reorientations]' \
+    '--iso-strain-cost[Use isotropic strain cost for the lattice mapping cost]' \
+    '--min-lattice-cost[Minimum lattice cost (float)]' \
+    '--max-lattice-cost[Maximum lattice cost (float)]' \
+    '--lattice-k-best[Number of lattice mappings per parent/child superstructure (int)]' \
+    '--lattice-reorientation-range[Max lattice reorientation matrix element (int)]' \
+    '--iso-disp-cost[Use isotropic disp cost for the atom mapping cost]' \
+    '--forced-on[Force specific atom mappings (JSON dict\[int,int\])]' \
+    '--forced-off[Suppress specific atom mappings (JSON list\[tuple\[int,int\]\])]' \
+    '--dedup-interp-factors[Interpolation factors for deduplication (JSON list\[float\])]' \
+    '--format[Structure files format (casm vasp cif xyz etc.)]' \
+    '--parent-format[Parent structure file format (casm vasp cif xyz etc.)]' \
+    '--child-format[Child structure file format (casm vasp cif xyz etc.)]' \
+    '--options[JSON file containing options]:options:_files ' \
+    '--results-dir[Directory where results are written]:results-dir:_files -/' \
+    '--merge[Merge new results into existing results]' \
+    '--next[Expand previous search to include next greatest common multiple number of atoms]' \
+    '--desc[Print an extended description of the method and parameters]' \
+    '1:parent structure file:_files' \
+    '2:child structure file:_files'
+}
+
+_casm-map_search2_arguments() {
   _arguments \
     '(-h --help)'{-h,--help}"[show this help message and exit]" \
     '--min-n-atoms[Minimum number of atoms in superstructures (int)]' \
