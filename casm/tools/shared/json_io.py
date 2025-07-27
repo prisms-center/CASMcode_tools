@@ -35,7 +35,9 @@ def read_required(path: pathlib.Path, gz: bool = False):
             with open(path, "r") as f:
                 return json.load(f)
     else:
-        raise Exception("Required file: '" + printpathstr(path) + "' does not exist")
+        raise FileNotFoundError(
+            "Required file: '" + printpathstr(path) + "' does not exist"
+        )
 
 
 def read_contents(
