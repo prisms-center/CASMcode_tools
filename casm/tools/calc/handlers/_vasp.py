@@ -37,13 +37,6 @@ class ReportHandlerBase(ABC):
     def is_complete(self, calcdir: pathlib.Path) -> bool:
         """Check if the calculation is complete
 
-        Notes
-        -----
-        A calculation directory is considered complete if it contains a
-        "run.final" directory and that directory contains an "OUTCAR" file or an
-        "OUTCAR.gz" file. If the "OUTCAR.gz" file exists, it will be unzipped before
-        reporting.
-
         Parameters
         ----------
         calcdir: Union[pathlib.Path, tarfile.TarInfo]
@@ -53,6 +46,23 @@ class ReportHandlerBase(ABC):
         -------
         value: bool
             True if the calculation is complete, False otherwise.
+
+        """
+        pass
+
+    @abstractmethod
+    def status(self, calcdir: pathlib.Path):
+        """Get the status of a calculation directory
+
+        Parameters
+        ----------
+        calcdir: pathlib.Path
+            The calculation directory.
+
+        Returns
+        -------
+        status: str
+            The status of the calculation.
 
         """
         pass
@@ -142,6 +152,22 @@ class ArchiveReportHandler(ReportHandlerBase):
         member = self._getmember(path)
         return member is not None and member.isfile()
 
+    def _read_member(self, path: pathlib.Path):
+        """Read a tarfile member by path and return its content as a string"""
+        member = self._getmember(path)
+        if member is None:
+            raise FileNotFoundError(f"Member {path} not found in archive.")
+        with self.archive.extractfile(member) as f:
+            return f.read().decode("utf-8")
+
+    def _load_json_member(self, path: pathlib.Path):
+        """Load a tarfile JSON file member by path"""
+        member = self._getmember(path)
+        if member is None:
+            raise FileNotFoundError(f"Member {path} not found in archive.")
+        with self.archive.extractfile(member) as f:
+            return json.load(f)
+
 
 class VaspArchiveReportHandler(ArchiveReportHandler):
     """A base class for handling reporting results from VASP calculations stored in
@@ -210,15 +236,18 @@ class VaspArchiveReportHandler(ArchiveReportHandler):
         """str: The relative path to the configuration file from the calculation
         directory."""
 
+        self.sentinel_name = "status.json"
+        """str: The name of the sentinel file that indicates the parent
+        directory is a calculation directory."""
+
     def is_complete(self, calcdir: pathlib.Path):
         """Check if the calculation is complete
 
         Notes
         -----
-        A calculation directory is considered complete if it contains a
-        "run.final" directory and that directory contains an "OUTCAR" file or an
-        "OUTCAR.gz" file. If the "OUTCAR.gz" file exists, it will be unzipped before
-        reporting.
+        A calculation directory is considered complete if it contains a "status.json"
+        file with attribute ``"status": True``. Completed calculations are expected
+        to have an "OUTCAR" or "OUTCAR.gz" file in a "run.final" directory.
 
         Parameters
         ----------
@@ -232,22 +261,53 @@ class VaspArchiveReportHandler(ArchiveReportHandler):
 
         """
         if isinstance(calcdir, tarfile.TarInfo):
-            run_final = pathlib.Path(calcdir.name) / "run.final"
-            outcar_file = run_final / "OUTCAR"
-            outcar_gz_file = run_final / "OUTCAR.gz"
-
-            return self._member_isdir(run_final) and (
-                self._member_exists(outcar_file) or self._member_exists(outcar_gz_file)
-            )
+            path = pathlib.Path(calcdir.name) / self.sentinel_name
+            data = self._load_json_member(path)
 
         else:
-            run_final = calcdir / "run.final"
-            outcar_file = run_final / "OUTCAR"
-            outcar_gz_file = run_final / "OUTCAR.gz"
+            data = read_required(calcdir / self.sentinel_name)
 
-            return run_final.is_dir() and (
-                outcar_file.exists() or outcar_gz_file.exists()
+        return isinstance(data, dict) and data.get("status") == "complete"
+
+    def status(self, calcdir: pathlib.Path):
+        """Get the status of a calculation directory
+
+        Notes
+        -----
+        This method reads the "status.json" file in the calculation directory and
+        returns its `"status"` attribute value.
+
+        Parameters
+        ----------
+        calcdir: pathlib.Path
+            The calculation directory.
+
+        Returns
+        -------
+        status: str
+            The value of the `"status"` attribute in the "status.json" file. If the
+            file does not exist a FileNotFoundError exception is raised. If the file
+            cannot be read, or does not contain a `"status"` attribute, a ValueError
+            exception is raised.
+
+        """
+        if isinstance(calcdir, tarfile.TarInfo):
+            path = pathlib.Path(calcdir.name) / self.sentinel_name
+            data = self._load_json_member(path)
+        else:
+            data = read_required(calcdir / self.sentinel_name)
+        status = data.get("status")
+        if status is None:
+            raise ValueError(
+                f"Invalid status for {calcdir}: 'status' attribute not found in "
+                f"{self.sentinel_name}"
             )
+        elif not isinstance(status, str):
+            raise ValueError(
+                f"Invalid status value type for {calcdir}: expected str, "
+                f"got {type(status)}"
+            )
+        return status
 
     def _report_archive(self, calcdir: pathlib.Path):
         """Report the structure with properties from an archived calculation directory
@@ -260,7 +320,13 @@ class VaspArchiveReportHandler(ArchiveReportHandler):
         Returns
         -------
         data: dict
-            The calculated structure with properties, as a Python dict
+            The calculation data, as a Python dict, containing:
+
+            - "structure_with_properties": ``dict``, The final structure with
+              properties.
+            - "structure": ``Optional[dict]``, The initial structure, if present.
+            - "config": ``Optional[dict]``, The initial configuration, if present.
+
 
         """
         data = dict()
@@ -372,7 +438,12 @@ class VaspArchiveReportHandler(ArchiveReportHandler):
         Returns
         -------
         data: dict
-            The calculated structure with properties, as a Python dict
+            The calculation data, as a Python dict, containing:
+
+            - "structure_with_properties": ``dict``, The final structure with
+              properties.
+            - "structure": ``Optional[dict]``, The initial structure, if present.
+            - "config": ``Optional[dict]``, The initial configuration, if present.
 
         """
         data = dict()
@@ -428,7 +499,12 @@ class VaspArchiveReportHandler(ArchiveReportHandler):
         Returns
         -------
         data: dict
-            The calculated structure with properties, as a Python dict
+            The calculation data, as a Python dict, containing:
+
+            - "structure_with_properties": ``dict``, The final structure with
+              properties.
+            - "structure": ``Optional[dict]``, The initial structure, if present.
+            - "config": ``Optional[dict]``, The initial configuration, if present.
 
         """
         if isinstance(calcdir, tarfile.TarInfo):
@@ -539,10 +615,15 @@ class CasmV1VaspReportHandler(VaspArchiveReportHandler):
             # If path is a tarfile member, check its name
             return (
                 path.isdir()
-                and os.path.basename(path.name) == "calctype." + self.calc_id
+                and "calctype." + self.calc_id in path.name
+                and self._member_exists(pathlib.Path(path.name) / self.sentinel_name)
             )
         else:
-            return path.is_dir() and path.name == "calctype." + self.calc_id
+            return (
+                path.is_dir()
+                and "calctype." + self.calc_id in str(path)
+                and (path / self.sentinel_name).exists()
+            )
 
     def output_path(
         self,
@@ -574,8 +655,8 @@ class CasmV1VaspReportHandler(VaspArchiveReportHandler):
 class CasmVaspReportHandler(VaspArchiveReportHandler):
     """Handler for reporting VASP calculations
 
-    This works for calculations which can be identified by a sentinel file or
-    directory (by default "run.final") in the calculation directory:
+    This works for calculations which can be identified by a "status.json" file
+    in the calculation directory:
 
     .. code-block:: text
 
@@ -583,19 +664,21 @@ class CasmVaspReportHandler(VaspArchiveReportHandler):
         ├── <configuration_name>/
         │   ├── config.json
         │   ├── structure.json
+        │   ├── status.json
         │   ├── ...
         │   ├── run.final/OUTCAR
         │   ├── run.final/OUTCAR.gz
         │   └── structure_with_properties.json
         ...
 
-    When the handler is used is run on `calctype.<calc_id>`, it assumes that:
+    When the handler is used is run on `dir`, it assumes that:
 
-    1. All subdirectories containing a file or directory named `sentinel_name`
-       is a calculation directory. By default, the sentinel name is "structure.json".
-    2. A calculation directory with a "run.final" directory containing either
-       an "OUTCAR" or "OUTCAR.gz" file is complete. Otherwise, the calculation is
-       incomplete.
+    1. Any subdirectory containing a file named "status.json" is a calculation
+       directory.
+    2. A calculation directory with a "status.json" file containing
+       ``"status": "complete"`` in a top-level JSON attribute is complete. Otherwise,
+       the calculation is incomplete. Completed calculations are expected to have
+       an "OUTCAR" or "OUTCAR.gz" file in a "run.final" directory.
 
     If :func:`CasmVaspReportHandler.report` is run on a completed calculation
     directory, it will parse the results from the "OUTCAR" or "OUTCAR.gz" file, and
@@ -606,7 +689,6 @@ class CasmVaspReportHandler(VaspArchiveReportHandler):
 
     def __init__(
         self,
-        sentinel_name: str = "structure.json",
         update: bool = False,
         tool: typing.Optional[typing.Any] = None,
     ):
@@ -616,9 +698,6 @@ class CasmVaspReportHandler(VaspArchiveReportHandler):
 
         Parameters
         ----------
-        sentinel_name : str = "structure.json"
-            The name of the sentinel file or directory that indicates the parent
-            directory is a calculation directory.
         update: bool = False
             If True, the report will be run even if the
             "structure_with_properties.json" file already exists in the calculation
@@ -635,10 +714,6 @@ class CasmVaspReportHandler(VaspArchiveReportHandler):
             structure_relpath=pathlib.Path("structure.json"),
             config_relpath=pathlib.Path("config.json"),
         )
-
-        self.sentinel_name = sentinel_name
-        """str: The name of the sentinel file or directory that indicates the parent
-        directory is a calculation directory."""
 
     def is_calcdir(
         self,

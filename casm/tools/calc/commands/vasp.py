@@ -234,8 +234,8 @@ def vasp_report_all(args):
 
     Notes
     -----
-    This method assumes the VASP calculations have sentinel file or directory
-    which can be used to identify them. See
+    This method assumes the VASP calculation directories have a file named
+    "status.json" which can be used to identify them. See
     :class:`~casm.tools.calc.handlers.CasmVaspReportHandler` for details.
 
     Parameters
@@ -256,10 +256,9 @@ def vasp_report_all(args):
     from casm.tools.calc.handlers import CasmVaspReportHandler
 
     target = args.target
-    sentinel_name = args.sentinel
     update = args.update
 
-    handler = CasmVaspReportHandler(sentinel_name=sentinel_name, update=update)
+    handler = CasmVaspReportHandler(update=update)
     return _vasp_report_all(
         target=target,
         handler=handler,
@@ -346,6 +345,7 @@ This works for calculations with the following directory structure:
     ├── <configuration_name>/
     │   ├── config.json
     │   ├── structure.json
+    │   ├── status.json
     │   ├── ...
     │   ├── run.final/OUTCAR
     │   ├── run.final/OUTCAR.gz
@@ -354,11 +354,10 @@ This works for calculations with the following directory structure:
 
 When the commaned is run on `target`, it assumes that:
 
-1. All subdirectories containing a file or directory named `sentinel_name`
-   is a calculation directory. By default, the sentinel name is "run.final".
-2. A calculation directory with a "run.final" directory containing either
-   an "OUTCAR" or "OUTCAR.gz" file is complete. Otherwise, the calculation is
-   incomplete.
+1. All subdirectories containing a file named "status.json" is a calculation 
+   directory.
+2. If the "status.json" file contents include `{"status": "complete"}` the calculation
+   is considered complete. Otherwise, the calculation is incomplete.
 
 For each completed calculation directory,  it will parse the results from the 
 "OUTCAR" or "OUTCAR.gz" file, and store the resulting 
@@ -484,7 +483,7 @@ def make_vasp_subparser(c):
         help="Report calculations from a directory or archive",
         description=(
             "Report all VASP calculation results from a directory or archive file "
-            "(*.tar.gz or *.tgz), identified by a sentinel file or directory (use "
+            '(*.tar.gz or *.tgz), identified by a "status.json" file (use '
             "--desc for details)."
         ),
     )
@@ -496,15 +495,6 @@ def make_vasp_subparser(c):
         help=(
             "Directory or archive file (*.tar.gz or *.tgz) to search for "
             "VASP calculations"
-        ),
-    )
-    m.add_argument(
-        "--sentinel",
-        type=str,
-        default="run.final",
-        help=(
-            "Name of file or directory used to identify calculation directories "
-            "(default is 'run.final')"
         ),
     )
     m.add_argument(

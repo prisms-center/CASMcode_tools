@@ -453,25 +453,6 @@ class AseVaspTool:
         # Write INCAR, KPOINTS, POTCAR, POSCAR
         vasp_calculator.write_input(atoms=ase_atoms)
 
-        # Write structure.json file
-        structure_json_path = calc_dir / "structure.json"
-        json_io.safe_dump(
-            data=casm_structure.to_dict(),
-            path=structure_json_path,
-            force=True,
-            quiet=True,
-        )
-
-        if config is not None:
-            # Write configuration.json file
-            config_json_path = calc_dir / "config.json"
-            json_io.safe_dump(
-                data=config.to_dict(),
-                path=config_json_path,
-                force=True,
-                quiet=True,
-            )
-
         return vasp_calculator
 
     def report(
