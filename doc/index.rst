@@ -49,39 +49,6 @@ A suggested way to cite this program for performing VASP calculations is as foll
        Python library for working with atoms J. Phys.: Condens. Matter Vol. 29 273002,
        2017.
 
-casm-convert
-------------
-
-The casm-convert command line program is planned to support conversion between CASM and
-other structure formats. Conversions between CASM and VASP formats are implemented in
-CASM. Other conversions are performed using `ASE <https://wiki.fysik.dtu.dk/ase/>`_.
-
-A suggested way to cite this program for performing structure conversions is as follows:
-
-.. code-block:: text
-
-    "Structure conversions were performed with the `casm-convert` program provided
-    by CASM [1]."
-
-    or
-
-    "Structure conversions were performed with the `casm-convert` program provided
-    by CASM [1], using conversions provided by ASE [2]."
-
-    1. B. Puchala, J. C. Thomas, A. R. Natarajan, J. G. Goiri, S. S. Behara, J. L.
-       Kaufman, A. Van der Ven, CASM—A software package for first-principles based
-       study of multicomponent crystalline solids, Computational Materials Science
-       217 (2023) 111897.
-    2. Ask Hjorth Larsen, Jens Jørgen Mortensen, Jakob Blomqvist, Ivano E. Castelli,
-       Rune Christensen, Marcin Dułak, Jesper Friis, Michael N. Groves, Bjørk Hammer,
-       Cory Hargus, Eric D. Hermes, Paul C. Jennings, Peter Bjerre Jensen, James
-       Kermode, John R. Kitchin, Esben Leonhard Kolsbjerg, Joseph Kubal, Kristen
-       Kaasbjerg, Steen Lysgaard, Jón Bergmann Maronsson, Tristan Maxson, Thomas Olsen,
-       Lars Pastewka, Andrew Peterson, Carsten Rostgaard, Jakob Schiøtz, Ole Schütt,
-       Mikkel Strange, Kristian S. Thygesen, Tejs Vegge, Lasse Vilhelmsen, Michael
-       Walter, Zhenhua Zeng, Karsten Wedel Jacobsen The Atomic Simulation Environment—A
-       Python library for working with atoms J. Phys.: Condens. Matter Vol. 29 273002,
-       2017.
 
 casm-map
 --------

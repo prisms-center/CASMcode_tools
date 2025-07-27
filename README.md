@@ -5,8 +5,6 @@
 The casm-tools package provides pure Python CLI tools and helper functions. This includes:
 
 - casm-calc: Setup, run, and report results of structure calculations
-- casm-convert: [coming soon] Convert structures and configurations between CASM and
-  other formats (using `ASE <https://wiki.fysik.dtu.dk/ase/>`_).
 - casm-map: Structure mapping and import
 
 
