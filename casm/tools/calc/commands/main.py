@@ -15,6 +15,8 @@ def make_parser():
 
     """
 
+    from .status import make_status_subparser
+    from .submit import make_submit_subparser
     from .vasp import make_vasp_subparser
 
     ### casm-calc ...
@@ -23,8 +25,10 @@ def make_parser():
     )
     c = parser.add_subparsers(title="Select which calculator to use")
 
-    ### casm-calc vasp ...
+    ### casm-calc ...
     make_vasp_subparser(c)
+    make_status_subparser(c)
+    make_submit_subparser(c)
 
     return parser
 
@@ -63,6 +67,20 @@ def main(argv=None, working_dir=None):
 
             print_desc(argv=argv)
             return 0
+        elif "status" in argv:
+            from .submit import print_desc
+
+            print_desc(argv=argv)
+            return 0
+
+        elif "submit" in argv:
+
+            from .submit import print_desc
+
+            print_desc(argv=argv)
+
+            return 0
+
         else:
             parser.print_help()
             return 1
