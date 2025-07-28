@@ -32,6 +32,7 @@ def run_submit(args):
     _validate_casm_project()
 
     from casm.project import Project, project_path
+    from casm.tools.shared.json_io import safe_dump
 
     # --- Load project ---
     path = project_path()
@@ -67,17 +68,71 @@ def run_submit(args):
         return config_selection
 
     # --- Submit jobs or print status ---
+    dry_run_msg = "(dry-run)"
+    print(f"{'Name':36}{'Status':12}{'Job ID':12}{'Message':18}")
+    print("-" * 78)
+
+    n_jobs_not_ready = 0
+
     for record in config_selection:
         if not record.is_selected:
             continue
 
+        if args.cancel:
+            if record.calc_status == "started" or record.calc_status == "submitted":
+                # --- Update status.json ---
+                status_data = record.calc_status_data
+                status_data["status"] = "canceled"
+                safe_dump(
+                    data=status_data,
+                    path=record.calc_dir / "status.json",
+                    quiet=True,
+                    force=True,
+                )
+                jobid = record.calc_jobid
+                msg = "canceled"
+
+                # --- Cancel job ---
+                completed_processes = record.run_subprocess(
+                    args=["scancel", record.calc_jobid],
+                    capture_output=True,
+                    text=True,
+                )
+
+                if completed_processes[0].returncode != 0:
+                    print(
+                        f"Error canceling job for {record.name}: "
+                        f"{completed_processes[0].stderr}"
+                    )
+                    return 1
+
+                # --- Print status ---
+                print(f"{record.name:36}{record.calc_status:12}{jobid:12}{msg:18}")
+            continue
+
         if not submit_jobs:
-            # --- Print current status ---
-            print(f"(dry-run) {record.name}: {record.calc_status}")
+            if record.calc_status != "setup" or record.calc_jobid != "none":
+                n_jobs_not_ready += 1
+                msg = "skipping"
+            else:
+                msg = dry_run_msg
+            jobid = record.calc_jobid
+
+            # --- Printstatus ---
+            print(f"{record.name:36}{record.calc_status:12}{jobid:12}{msg:18}")
+        elif record.calc_status != "setup" or record.calc_jobid != "none":
+            n_jobs_not_ready += 1
+            msg = "skipping"
+            jobid = record.calc_jobid
+
+            # --- Print status ---
+            print(f"{record.name:36}{record.calc_status:12}{jobid:12}{msg:18}")
+
         else:
-            # --- Submit job ---
+
+            # --- Submit job w/ hold ---
             completed_processes = record.run_subprocess(
-                args=["sbatch", "submit.sh"],
+                args=["sbatch", "--hold", "submit.sh"],
                 capture_output=True,
                 text=True,
             )
@@ -89,22 +144,48 @@ def run_submit(args):
                 )
                 return 1
 
-            stdout = completed_processes[0].stdout
-
             # --- Extract job ID from output ---
-            # Use string operations only
+            stdout = completed_processes[0].stdout
             if "Submitted batch job" in stdout:
                 jobid = stdout.strip().split()[-1]
-                print("Submitted job ID:", jobid)
-            else:
-                print(
-                    "Warning: Could not parse jobid\n"
-                    f"Unexpected output format: \n"
-                    f"{stdout}"
-                )
-                jobid = None
 
-            # match = re.search(r"Submitted batch job (\d+)", result.stdout)
+                # --- Update status.json ---
+                status_data = record.calc_status_data
+                status_data["status"] = "submitted"
+                status_data["jobid"] = jobid
+                safe_dump(
+                    data=status_data,
+                    path=record.calc_dir / "status.json",
+                    quiet=True,
+                    force=True,
+                )
+
+                # --- Release job ---
+                record.run_subprocess(
+                    args=["scontrol", "release", f"{jobid}"],
+                    capture_output=True,
+                    text=True,
+                )
+            else:
+                print("~" * 40)
+                print(f"Error submitting job for {record.name}: ")
+                print("---")
+                print(stdout)
+                print("---")
+                print(completed_processes[0].stderr)
+                print("~" * 40)
+
+            # --- Print status ---
+            msg = ""
+            print(f"{record.name:36}{record.calc_status:12}{jobid:12}{msg:18}")
+
+    if n_jobs_not_ready:
+        print()
+        print(
+            f"Warning: {n_jobs_not_ready} jobs have status != 'setup' or "
+            "jobid != 'none', so they were not submitted."
+        )
+        print()
 
     return 0
 
@@ -178,6 +259,14 @@ def make_submit_subparser(c):
         help=(
             "If given, print configurations that would be submitted and their current "
             "calc status, but do not submit."
+        ),
+    )
+    submit.add_argument(
+        "--cancel",
+        action="store_true",
+        help=(
+            'If given, calculations with status="started" or "submitted" are canceled. '
+            "No jobs are submitted."
         ),
     )
     submit.add_argument(

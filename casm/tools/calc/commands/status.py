@@ -181,6 +181,11 @@ def run_status(args):
         - `args.none`, `args.setup`, `args.started`, `args.stopped`, `args.complete`,
           `args.other`: If set, prints configurations with the corresponding status. If
           multiple are set, prints configurations with any of the specified statuses.
+        - `args.all`: If set, checks the status of all configurations in the
+          enumeration, not just the selected ones.
+        - `args.details`: If set, prints configurations with any status.
+        - `args.show_calc_dir`: If set, includes the path to the calculation directory
+          in the output.
 
     Returns
     -------
@@ -225,15 +230,30 @@ def run_status(args):
         if not record.is_selected:
             continue
     details = []
-    standard_status = ["none", "setup", "started", "stopped", "complete"]
+    standard_status = [
+        "none",
+        "setup",
+        "submitted",
+        "started",
+        "canceled",
+        "stopped",
+        "complete",
+    ]
 
     def add_details(record):
-        details.append(
-            [record.name, record.calc_status, record.calc_jobid, record.calc_runtime]
-        )
+        _details = [
+            record.name,
+            record.calc_status,
+            record.calc_jobid,
+            record.calc_runtime,
+        ]
+        details.append(_details)
+
+    print(f"{'Name':36}{'Status':12}{'Job ID':12}{'Runtime':18}")
+    print("-" * 78)
 
     for record in config_selection:
-        if args.all is None and not record.is_selected:
+        if not args.all and not record.is_selected:
             continue
 
         status = record.calc_status
@@ -247,22 +267,23 @@ def run_status(args):
             or (args.none and status == "none")
             or (args.setup and status == "setup")
             or (args.started and status == "started")
+            or (args.submitted and status == "submitted")
+            or (args.canceled and status == "canceled")
             or (args.stopped and status == "stopped")
             or (args.complete and status == "complete")
             or (args.other and status not in standard_status)
         ):
-            add_details(record)
+            name = record.name
+            jobid = record.calc_jobid
+            runtime = record.calc_runtime
+            print(f"{name:36}{status:12}{jobid:12}{runtime:18}")
 
     if args.tabulate:
         table = []
         for status, count in status_count.items():
             table.append([status, count])
-        print(tabulate(table, headers=["Status", "Count"]))
         print()
-
-    if len(details):
-        headers = ["Name", "Status", "Job ID", "Runtime"]
-        print(tabulate(details, headers=headers))
+        print(tabulate(table, headers=["Status", "Count"]))
         print()
 
     return 0
@@ -366,6 +387,16 @@ def make_status_subparser(c):
         "--started",
         action="store_true",
         help=('Print configurations with status="started".'),
+    )
+    status.add_argument(
+        "--submitted",
+        action="store_true",
+        help=('Print configurations with status="submitted".'),
+    )
+    status.add_argument(
+        "--canceled",
+        action="store_true",
+        help=('Print configurations with status="canceled".'),
     )
     status.add_argument(
         "--stopped",
