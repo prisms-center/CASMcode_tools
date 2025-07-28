@@ -75,8 +75,6 @@ def run_submit(args):
     n_jobs_not_ready = 0
 
     for record in config_selection:
-        if not record.is_selected:
-            continue
 
         if args.cancel:
             if record.calc_status == "started" or record.calc_status == "submitted":

@@ -226,9 +226,6 @@ def run_status(args):
         return config_selection
 
     status_count = dict()
-    for record in config_selection:
-        if not record.is_selected:
-            continue
     details = []
     standard_status = [
         "none",
@@ -252,7 +249,7 @@ def run_status(args):
     print(f"{'Name':36}{'Status':12}{'Job ID':12}{'Runtime':18}")
     print("-" * 78)
 
-    for record in config_selection:
+    for record in config_selection.all:
         if not args.all and not record.is_selected:
             continue
 
