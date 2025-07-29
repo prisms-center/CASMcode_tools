@@ -56,6 +56,7 @@ def report(
         implementation.
 
     """
+    start = dir
 
     # Walk `dir` recursively, and if a directory is a calculation directory for
     # which a report is needed, run the report in that directory,
@@ -79,7 +80,7 @@ def report(
                 else:
                     data = handler.report(calcdir=path)
                     complete.append(path)
-                    results[str(path)] = data
+                    results[str(path.relative_to(start))] = data
 
                 # If a directory is a calculation directory,
                 # no need to walk into its subdirectories.
