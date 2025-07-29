@@ -246,8 +246,7 @@ def run_status(args):
         ]
         details.append(_details)
 
-    print(f"{'Name':36}{'Status':12}{'Job ID':12}{'Runtime':18}")
-    print("-" * 78)
+    details_header_printed = False
 
     for record in config_selection.all:
         if not args.all and not record.is_selected:
@@ -270,6 +269,11 @@ def run_status(args):
             or (args.complete and status == "complete")
             or (args.other and status not in standard_status)
         ):
+            if not details_header_printed:
+                print(f"{'Name':36}{'Status':12}{'Job ID':12}{'Runtime':18}")
+                print("-" * 78)
+                details_header_printed = True
+
             name = record.name
             jobid = record.calc_jobid
             runtime = record.calc_runtime
