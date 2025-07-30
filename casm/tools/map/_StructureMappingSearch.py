@@ -1976,6 +1976,7 @@ class StructureMappingSearch:
     def __call__(
         self,
         parent: xtal.Structure,
+        parent_prim: Optional[casmconfig.Prim],
         child: xtal.Structure,
         results_dir: pathlib.Path,
         merge: bool = False,
@@ -1986,6 +1987,10 @@ class StructureMappingSearch:
         ----------
         parent : xtal.Structure
             The parent structure.
+        parent_prim : Optional[casmconfig.Prim]
+            The parent primitive structure. If both `parent` and `parent_prim` are
+            provided, the `parent` structure is used to create the fix the supercell
+            being mapped to with the "fix_parent" option.
         child : xtal.Structure
             The child structure.
         results_dir : pathlib.Path
@@ -1995,7 +2000,18 @@ class StructureMappingSearch:
             If True, merge the results with existing results in the directory. If False,
             exit with error if the directory already exists.
         """
-        parent_prim = casmconfig.Prim(xtal.Prim.from_atom_coordinates(structure=parent))
+        alloy = False
+        if parent_prim is None:
+            parent_prim = casmconfig.Prim(
+                xtal.Prim.from_atom_coordinates(structure=parent)
+            )
+        else:
+            alloy = True
+            if not self.opt.fix_parent:
+                raise NotImplementedError(
+                    "Mapping to a prim is only supported with the --fix-parent option."
+                )
+
         self._supercell_set = casmconfig.SupercellSet(prim=parent_prim)
 
         search_results = []
@@ -2010,12 +2026,17 @@ class StructureMappingSearch:
                 data = read_required(results_dir / "mappings.json")
 
                 # Validate same parent and child structures:
-                _last_parent = xtal.Structure.from_dict(data.get("parent"))
-                if not parent.is_equivalent_to(_last_parent):
-                    different_parent_error()
-                _last_child = xtal.Structure.from_dict(data.get("child"))
-                if not child.is_equivalent_to(_last_child):
-                    different_child_error()
+                if alloy is False:
+                    _last_parent = xtal.Structure.from_dict(data.get("parent"))
+                    if not parent.is_equivalent_to(_last_parent):
+                        different_parent_error()
+                    _last_child = xtal.Structure.from_dict(data.get("child"))
+                    if not child.is_equivalent_to(_last_child):
+                        different_child_error()
+                else:
+                    # TODO validation
+                    pass
+
                 search_results = [
                     mapinfo.ScoredStructureMapping.from_dict(
                         data=x, prim=parent_prim.xtal_prim
@@ -2044,10 +2065,20 @@ class StructureMappingSearch:
                 ):
                     different_lattice_cost_weight_error()
 
-        self.validate(parent, child)
+        if alloy is False:
+            self.validate(parent, child)
+        else:
+            # TODO
+            pass
 
         ## Parameters
-        _max_n_atoms = self._get_max_n_atoms(parent, child)
+        if alloy is False:
+            _max_n_atoms = self._get_max_n_atoms(parent, child)
+        else:
+            _max_n_atoms = _get_max_n_atoms_for_parent_prim(
+                max_n_atoms=self.opt.max_n_atoms,
+                child=child,
+            )
         _min_n_atoms = self.opt.min_n_atoms
         _child_T_list = self.opt.child_transformation_matrix_to_super_list
         _parent_T_list = self.opt.parent_transformation_matrix_to_super_list
@@ -2087,20 +2118,34 @@ class StructureMappingSearch:
         )
 
         if self.opt.fix_parent:
-            I_matrix = np.eye(3, dtype="int")
-            T_pairs = [(I_matrix, I_matrix)]
+            if alloy is False:
+                I_matrix = np.eye(3, dtype="int")
+                T_pairs = [(I_matrix, I_matrix)]
+            else:
+                # If fixing the parent, we only need one pair of transformation matrices
+                # (identity for both child and parent).
+                I_matrix = np.eye(3, dtype="int")
+                T_parent = xtal.make_transformation_matrix_to_super(
+                    superlattice=parent.lattice(),
+                    unit_lattice=parent_prim.xtal_prim.lattice(),
+                )
+                T_pairs = [(I_matrix, T_parent)]
         else:
-
-            # Get a list of (T_child, T_parent) pairs
-            T_pairs = self._make_T_pairs(
-                parent=parent,
-                child=child,
-                parent_prim=parent_prim,
-                min_n_atoms=_min_n_atoms,
-                max_n_atoms=_max_n_atoms,
-                child_T_list=_child_T_list,
-                parent_T_list=_parent_T_list,
-            )
+            if alloy is False:
+                # Get a list of (T_child, T_parent) pairs
+                T_pairs = self._make_T_pairs(
+                    parent=parent,
+                    child=child,
+                    parent_prim=parent_prim,
+                    min_n_atoms=_min_n_atoms,
+                    max_n_atoms=_max_n_atoms,
+                    child_T_list=_child_T_list,
+                    parent_T_list=_parent_T_list,
+                )
+            else:
+                raise NotImplementedError(
+                    "Alloy structures are only supported with the --fix-parent option."
+                )
 
         total = len(T_pairs)
         print(f"Beginning search over {total} parent / child superstructure pairs...")
@@ -2283,6 +2328,7 @@ class StructureMappingSearch:
                 uuids=uuids,
                 parent=parent,
                 child=child,
+                parent_prim=parent_prim,
                 results_dir=results_dir,
             )
 
@@ -2382,7 +2428,7 @@ class StructureMappingSearch:
 
         def make_chain(structure_mapping):
             return make_primitive_chain(
-                parent_lattice=parent.lattice(),
+                parent_lattice=parent_prim.xtal_prim.lattice(),
                 child=child,
                 structure_mapping=structure_mapping,
                 f_chain=f_chain,
@@ -2471,12 +2517,14 @@ class StructureMappingSearch:
         uuids: list[str],
         parent: xtal.Structure,
         child: xtal.Structure,
+        parent_prim: casmconfig.Prim,
         results_dir: pathlib.Path,
     ) -> None:
         """Write the results of the search."""
         data = {
             "parent": parent.to_dict(),
             "child": child.to_dict(),
+            "parent_prim": parent_prim.to_dict(),
             "mappings": [smap.to_dict() for smap in search_results],
             "uuids": [x for x in uuids],
         }
@@ -2532,7 +2580,7 @@ class StructureMappingSearch:
             T_parent = latmap.transformation_matrix_to_super()
             parent_volume = abs(int(round(np.linalg.det(T_parent))))
             T_child = make_child_transformation_matrix_to_super(
-                parent_lattice=parent.lattice(),
+                parent_lattice=parent_prim.xtal_prim.lattice(),
                 child_lattice=child.lattice(),
                 structure_mapping=scored_structure_mapping,
             )

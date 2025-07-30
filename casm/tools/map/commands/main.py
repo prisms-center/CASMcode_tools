@@ -16,7 +16,8 @@ def make_parser():
     """
 
     from .search import make_search_parser
-    from .search2 import make_search2_parser
+
+    # from .search2 import make_search2_parser
     from .write import make_write_parser
 
     parser = argparse.ArgumentParser(
@@ -25,7 +26,7 @@ def make_parser():
 
     m = parser.add_subparsers(title="Select which method to use")
     make_search_parser(m)
-    make_search2_parser(m)
+    # make_search2_parser(m)
     make_write_parser(m)
 
     return parser
@@ -66,11 +67,11 @@ def main(argv=None, working_dir=None):
 
             print_desc()
             return 0
-        elif "search2" in argv:
-            from .search import print_desc
-
-            print_desc()
-            return 0
+        # elif "search2" in argv:
+        #     from .search import print_desc
+        #
+        #     print_desc()
+        #     return 0
 
         elif "write" in argv:
             from .write import print_desc

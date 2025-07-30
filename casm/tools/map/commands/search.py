@@ -355,10 +355,15 @@ def run_search(args):
         print_desc()
         return 0
 
-    if args.alloy:
-        parent = casmconfig.Prim.from_dict(data=read_required(args.parent))
+    if args.prim:
+        parent_prim = casmconfig.Prim.from_dict(data=read_required(args.prim))
+        print("ParentPrim:")
+        print(parent_prim)
+        print()
     else:
-        parent = read_structure(path=args.parent, format=_get_parent_format(args))
+        parent_prim = None
+
+    parent = read_structure(path=args.parent, format=_get_parent_format(args))
     print("Parent:")
     print(parent)
     print()
@@ -456,7 +461,13 @@ def run_search(args):
     sys.stdout.flush()
 
     f = StructureMappingSearch(opt=opt)
-    code = f(parent=parent, child=child, results_dir=args.results_dir, merge=merge)
+    code = f(
+        parent=parent,
+        parent_prim=parent_prim,
+        child=child,
+        results_dir=args.results_dir,
+        merge=merge,
+    )
 
     return code
 
@@ -732,10 +743,12 @@ def make_search_parser(m):
     ### Input options
     input = search.add_argument_group("Input options")
     input.add_argument(
-        "--alloy",
-        action="store_true",
-        default=False,
-        help=("Read parent as a CASM Prim and map child structure onto allowed sites."),
+        "--prim",
+        type=str,
+        help=(
+            "Read a CASM Prim and map child structure onto allowed sites. It is "
+            "required to also set --fix-parent)."
+        ),
     )
     input.add_argument(
         "--format",
