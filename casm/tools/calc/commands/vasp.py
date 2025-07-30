@@ -126,12 +126,12 @@ def vasp_report(args):
     return 0
 
 
-def _vasp_report_all(
+def _vasp_import(
     target: pathlib.Path,
     handler: typing.Any,
 ):
-    """Walk a directory or archive file and report results in CASM structure format for
-    all calculation subdirectories.
+    """Walk a directory report results in CASM structure format for all calculation
+    subdirectories.
 
     Notes
     -----
@@ -155,7 +155,7 @@ def _vasp_report_all(
     Parameters
     ----------
     target : pathlib.Path
-        The directory or archive file to walk. This should contain subdirectories that
+        The directory to search. This should contain subdirectories that
         may be calculation directories. Calculation directories should not contain other
         calculation directories.
     handler : typing.Any
@@ -172,27 +172,23 @@ def _vasp_report_all(
         A return code indicating success (0) or failure (non-zero).
 
     """
-    from casm.tools.calc.methods import report, report_archive
+    from casm.tools.calc.methods import import_directory
 
     if not target.exists():
         print(f"{target}: does not exist")
         return 1
 
     try:
-        if str(target).endswith((".tar.gz", ".tgz")):
-            report_archive(archive_path=target, handler=handler)
-            return 0
-        else:
-            report(dir=target, handler=handler)
-            return 0
+        import_directory(dir=target, handler=handler)
+        return 0
     except Exception as e:
-        print(f"{target}: Error processing archive")
+        print(f"{target}: Error importing from directory")
         print(e)
         return 1
 
 
-def vasp_report_all_v1(args):
-    """Implements ``casm-calc vasp report-all-v1 ...``
+def vasp_import_v1(args):
+    """Implements ``casm-calc vasp import-v1 ...``
 
     Notes
     -----
@@ -204,8 +200,7 @@ def vasp_report_all_v1(args):
     args : argparse.Namespace
         The parsed arguments from the command line. Uses:
 
-        - `args.target`: pathlib.Path, The directory or archive file to search for VASP
-          calculations.
+        - `args.target`: pathlib.Path, The directory to search for VASP calculations.
         - `args.calc_id`: str, optional, The calculation type ID (i.e. gga in
           'calctype.gga'), used to identify calculation directories.
         - `args.update`: If set, forces re-parsing VASP output.
@@ -223,14 +218,14 @@ def vasp_report_all_v1(args):
     update = args.update
 
     handler = CasmV1VaspReportHandler(calc_id=calc_id, update=update)
-    return _vasp_report_all(
+    return _vasp_import(
         target=target,
         handler=handler,
     )
 
 
-def vasp_report_all(args):
-    """Implements ``casm-calc vasp report-all ...``
+def vasp_import(args):
+    """Implements ``casm-calc vasp import ...``
 
     Notes
     -----
@@ -243,8 +238,7 @@ def vasp_report_all(args):
     args : argparse.Namespace
         The parsed arguments from the command line. Uses:
 
-        - `args.target`: pathlib.Path, The directory or archive file to search for VASP
-          calculations.
+        - `args.target`: pathlib.Path, The directory to search for VASP calculations.
         - `args.update`: If set, forces re-parsing VASP output.
 
     Returns
@@ -259,7 +253,7 @@ def vasp_report_all(args):
     update = args.update
 
     handler = CasmVaspReportHandler(update=update)
-    return _vasp_report_all(
+    return _vasp_import(
         target=target,
         handler=handler,
     )
@@ -285,8 +279,8 @@ If the option --traj is used, this writes a file named
 for each step in the calculation.
 """
 
-vasp_report_all_v1_desc = """
-# The `casm-calc vasp report-all-v1` command:
+vasp_import_v1_desc = """
+# The `casm-calc vasp import-v1` command:
 
 This works for calculations with the following directory structure:
 
@@ -313,10 +307,9 @@ When the command is run on `target`, it assumes that:
    if the calculation was setup from a CASM configuration or structure.
 
 For each completed calculation directory, it will parse the results from the 
-"OUTCAR" or "OUTCAR.gz" file, and store the resulting 
-"structure_with_properties.json" file in the calculation directory (this is not
-done if the target is an archive). It will also collect the "config.json" and 
-"structure.json" file contents if they are present.
+"run.final/OUTCAR" or "run.final/OUTCAR.gz", and store the resulting 
+"structure_with_properties.json" file in the calculation directory. It will also 
+collect the "config.json" and "structure.json" file contents if they are present.
 
 This method writes three files:
 
@@ -334,8 +327,8 @@ This method writes three files:
 
 """
 
-vasp_report_all_desc = """
-# The `casm-calc vasp report-all` command:
+vasp_import_desc = """
+# The `casm-calc vasp import` command:
 
 This works for calculations with the following directory structure:
 
@@ -359,11 +352,11 @@ When the commaned is run on `target`, it assumes that:
 2. If the "status.json" file contents include `{"status": "complete"}` the calculation
    is considered complete. Otherwise, the calculation is incomplete.
 
-For each completed calculation directory,  it will parse the results from the 
-"OUTCAR" or "OUTCAR.gz" file, and store the resulting 
-"structure_with_properties.json" file in the calculation directory (this is 
-not done if the target is an archive). It will also collect the "config.json" 
-and "structure.json" file contents if they are present.
+For each completed calculation directory,  it will parse the results from 
+"run.final/OUTCAR" or "run.final/OUTCAR.gz", and store the resulting 
+"structure_with_properties.json" file in the calculation directory. It will 
+also collect the "config.json" and "structure.json" file contents if they are 
+present.
 
 This method writes three files:
 
@@ -387,10 +380,10 @@ def print_desc(argv=None):
         print(vasp_setup_desc)
     elif "report" in argv:
         print(vasp_report_desc)
-    elif "report-all-v1" in argv:
-        print(vasp_report_all_v1_desc)
-    elif "report-all" in argv:
-        print(vasp_report_all_desc)
+    elif "import-v1" in argv:
+        print(vasp_import_v1_desc)
+    elif "import" in argv:
+        print(vasp_import_desc)
     else:
         print("No extended description available.")
 
@@ -477,25 +470,21 @@ def make_vasp_subparser(c):
         help=("Save the trajectory of structures instead of the final structure. "),
     )
 
-    ### casm-calc vasp report-all ....
+    ### casm-calc vasp import ....
     m = vasp_m.add_parser(
-        "report-all",
-        help="Report calculations from a directory or archive",
+        "import",
+        help="Import VASP calculations from a directory",
         description=(
-            "Report all VASP calculation results from a directory or archive file "
-            '(*.tar.gz or *.tgz), identified by a "status.json" file (use '
-            "--desc for details)."
+            "Walk a directory tree and import VASP results from directories "
+            "identified by a \"status.json\" file (use '--desc' for details)."
         ),
     )
-    m.set_defaults(func=vasp_report_all)
+    m.set_defaults(func=vasp_import)
 
     m.add_argument(
         "target",
         type=pathlib.Path,
-        help=(
-            "Directory or archive file (*.tar.gz or *.tgz) to search for "
-            "VASP calculations"
-        ),
+        help=("Directory to search for VASP calculations"),
     )
     m.add_argument(
         "--update",
@@ -509,24 +498,21 @@ def make_vasp_subparser(c):
         help="Print an extended description of the method and parameters.",
     )
 
-    ### casm-calc vasp report-all-v1 ....
+    ### casm-calc vasp import-v1 ....
     m = vasp_m.add_parser(
-        "report-all-v1",
-        help="Report calculations from a directory or archive (CASM v1 layout)",
+        "import-v1",
+        help="Import calculations from a directory (CASM v1 layout)",
         description=(
-            "Report all VASP calculation results from a directory or archive file "
-            "(*.tar.gz or *.tgz) with CASM v1 layout (use --desc for details)."
+            "Walk a directory tree with CASM v1 layout and import VASP results "
+            "(use '--desc' for details)."
         ),
     )
-    m.set_defaults(func=vasp_report_all_v1)
+    m.set_defaults(func=vasp_import_v1)
 
     m.add_argument(
         "target",
         type=pathlib.Path,
-        help=(
-            "Directory or archive file (*.tar.gz or *.tgz) to search for "
-            "VASP calculations"
-        ),
+        help=("Directory to search for VASP calculations"),
     )
     m.add_argument(
         "--calc-id",

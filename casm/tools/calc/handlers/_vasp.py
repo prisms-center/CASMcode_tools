@@ -408,12 +408,6 @@ class VaspArchiveReportHandler(ArchiveReportHandler):
                     for item in extract_dir.iterdir():
                         item.unlink()
                     extract_dir.rmdir()
-
-                    # This works, but some reason it slows down with each file
-                    # processed:
-                    # with self.archive.extractfile(outcar_gz_member) as g:
-                    #     with gzip.open(g, "rt", encoding="utf-8") as fd:
-                    #         casm_structure = self.tool.report(fd=fd)
                 else:
                     raise FileNotFoundError(
                         f"Neither OUTCAR nor OUTCAR.gz found in {run_final}"
@@ -468,9 +462,10 @@ class VaspArchiveReportHandler(ArchiveReportHandler):
         try:
             run_final = calcdir / "run.final"
             casm_structure = self.tool.report(calc_dir=run_final)
-            data["structure_with_properties"] = casm_structure.to_dict()
+            casm_structure_data = casm_structure.to_dict()
+            data["structure_with_properties"] = casm_structure_data
             safe_dump(
-                data=data,
+                data=casm_structure_data,
                 path=structure_with_properties_path,
                 force=True,
                 quiet=True,

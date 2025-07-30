@@ -15,7 +15,7 @@ def delete_last_line():
     sys.stdout.flush()
 
 
-def report(
+def import_directory(
     dir: pathlib.Path,
     handler: typing.Any,
 ):
@@ -27,10 +27,10 @@ def report(
 
     This method writes three files:
 
-    - ``<output_base>.complete.json``: list[pathlib.Path], A list of completed
-      calculation directories.
-    - ``<output_base>.incomplete.json``: list[pathlib.Path], A list of incomplete
-      calculation directories.
+    - ``<output_base>.complete.json``: list[pathlib.Path], A list of relative paths to
+      completed calculation directories.
+    - ``<output_base>.incomplete.json``: list[pathlib.Path], A list of relative paths
+      to incomplete calculation directories.
     - ``<output_base>.results.json`` : dict[str, dict], A dictionary where keys are
       relative paths to the calculation directories, and values are dictionaries
       containing:
@@ -56,11 +56,19 @@ def report(
         implementation.
 
     """
+    if not dir.exists():
+        raise FileNotFoundError(
+            f"Error in import_directory: " f"Directory {dir} does not exist."
+        )
+    if not dir.is_dir():
+        raise NotADirectoryError(
+            f"Error in import_directory: " f"{dir} is not a directory."
+        )
+
     start = dir
 
     # Walk `dir` recursively, and if a directory is a calculation directory for
-    # which a report is needed, run the report in that directory,
-    # then run `casm-calc vasp report run.final` in that directory.
+    # which a report is needed, run the report in that directory.
     def _walk_directory(
         handler: typing.Any,
         dir: pathlib.Path,
@@ -114,12 +122,12 @@ def report(
     )
 
     safe_dump(
-        data=[str(x) for x in complete],
+        data=[str(path.relative_to(start)) for path in complete],
         path=handler.output_path(target=dir, suffix=".complete.json"),
         force=True,
     )
     safe_dump(
-        data=[str(x) for x in incomplete],
+        data=[str(path.relative_to(start)) for path in incomplete],
         path=handler.output_path(target=dir, suffix=".incomplete.json"),
         force=True,
     )
@@ -130,7 +138,11 @@ def report(
     )
 
 
-def report_archive(
+# This is a work in progress...
+# TODO:
+# - Fix output as relative paths
+# - Currently, this testing shows this slows down as it progresses.
+def _import_archive(
     archive_path: pathlib.Path,
     handler: typing.Any,
 ):

@@ -458,7 +458,6 @@ class AseVaspTool:
     def report(
         self,
         calc_dir: typing.Optional[pathlib.Path] = None,
-        fd: typing.Union[str, pathlib.Path, typing.IO, None] = None,
         index: typing.Any = None,
     ) -> typing.Union[xtal.Structure, list[xtal.Structure]]:
         """Report the results of a VASP calculation.
@@ -476,31 +475,22 @@ class AseVaspTool:
         results: Union[libcasm.xtal.Structure, list[libcasm.xtal.Structure]]
             A CASM Structure or a list of CASM Structures, as specified by `index`.
         """
-        if calc_dir is None == fd is None:
-            raise ValueError(
-                "Error in AseVaspTool.report: "
-                "One and only one of calc_dir or fd must be provided"
-            )
 
-        if calc_dir:
-            outcar_file = calc_dir / "OUTCAR"
-            if outcar_file.exists():
-                value = ase.io.read(outcar_file, format="vasp-out", index=index)
-            else:
-                outcar_gz_file = calc_dir / "OUTCAR.gz"
-                if outcar_gz_file.exists():
-                    import gzip
-
-                    with gzip.open(outcar_gz_file, "rt") as f:
-                        value = ase.io.read(f, format="vasp-out", index=index)
-                else:
-                    raise FileNotFoundError(
-                        f"Error in AseVaspTool.report: "
-                        f"Neither OUTCAR nor OUTCAR.gz found in {calc_dir.as_posix()}"
-                    )
+        outcar_file = calc_dir / "OUTCAR"
+        if outcar_file.exists():
+            value = ase.io.read(outcar_file, format="vasp-out", index=index)
         else:
-            print(fd)
-            value = ase.io.read(fd, format="vasp-out", index=index)
+            outcar_gz_file = calc_dir / "OUTCAR.gz"
+            if outcar_gz_file.exists():
+                import gzip
+
+                with gzip.open(outcar_gz_file, "rt") as f:
+                    value = ase.io.read(f, format="vasp-out", index=index)
+            else:
+                raise FileNotFoundError(
+                    f"Error in AseVaspTool.report: "
+                    f"Neither OUTCAR nor OUTCAR.gz found in {calc_dir.as_posix()}"
+                )
 
         if isinstance(value, ase.Atoms):
             results = self._make_casm_structure_f(value)

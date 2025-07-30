@@ -1,6 +1,5 @@
 """Methods for casm-calc"""
 
-from ._report import (
-    report,
-    report_archive,
+from ._import import (
+    import_directory,
 )
