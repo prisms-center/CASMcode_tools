@@ -1,0 +1,5 @@
+libcasm-xtal>=2.0.1
+libcasm-mapping>=2.0.1
+libcasm-configuration>=2.0.0
+numpy
+tabulate

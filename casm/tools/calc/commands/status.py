@@ -4,6 +4,12 @@ import importlib.util
 import sys
 import typing
 
+# Note:
+# The command `casm-calc status` is implemented by `run_status` which requires
+# `casm.project` to be installed. This is a bit odd, because `casm.tools` is a
+# dependency of `casm.project`. At some point `casm-calc status` will be refactored
+# to be a plugin provided by `casm.project`.
+
 if typing.TYPE_CHECKING:
     import argparse
 

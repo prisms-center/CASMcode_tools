@@ -7,7 +7,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "casm-tools"
-version = "1.0a1"
+version = "2.0a1"
 authors = [
   { name="CASM developers", email="casm-developers@lists.engr.ucsb.edu" },
 ]
@@ -25,6 +25,7 @@ dependencies = [
     "libcasm-mapping>=2.0.1",
     "libcasm-configuration>=2.0.0",
     "numpy",
+    "tabulate",
 ]
 
 [project.optional-dependencies]

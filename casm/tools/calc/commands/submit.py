@@ -1,5 +1,11 @@
 """Implements ``casm-calc submit ...``"""
 
+# Note:
+# The command `casm-calc submit` is implemented by `run_submit` which requires
+# `casm.project` to be installed. This is a bit odd, because `casm.tools` is a
+# dependency of `casm.project`. At some point `casm-calc submit` will be refactored
+# to be a plugin provided by `casm.project`.
+
 
 def run_submit(args):
     """Implements ``casm-calc submit ...``
