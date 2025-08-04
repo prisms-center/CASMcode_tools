@@ -1,14 +1,18 @@
 # Changelog
 
-All notable changes to `casm-map` will be documented in this file.
+All notable changes to `casm-tools` will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
-## [1.0a1] - 2024-01-22
+## [2.0a1] - 2025-08-04
 
+This release creates the casm-tools package, which provides pure Python CLI tools and 
+helper functions. This includes:
 
-### Added
+- casm-calc: Setup, run, and report results of structure calculations
+- casm-map: Structure mapping and import
+- casm.tools.shard: Helper functions for I/O, integrating with ASE, and context 
+  managers.
 
-- ...
