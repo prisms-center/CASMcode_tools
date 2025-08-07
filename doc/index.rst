@@ -14,10 +14,12 @@ casm-tools
 The casm-tools package provides command line programs based on capabilities implemented
 in CASM. This includes:
 
-- casm-calc: Setup, run, and report results of structure calculations
+- casm-calc: Setup, run, and import results of structure calculations
 - casm-convert: [coming soon] Convert structures and configurations between CASM and
   other formats (using `ASE <https://wiki.fysik.dtu.dk/ase/>`_).
 - casm-map: Structure mapping and import
+- casm.tools.shared: Helper functions for I/O, integrating with ASE, and context
+  managers.
 
 casm-calc
 ---------

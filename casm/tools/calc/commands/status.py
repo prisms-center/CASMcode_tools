@@ -54,6 +54,7 @@ def make_config_selection(
         The CASM project to work with.
     args: argparse.Namespace
         The parsed arguments from the command line. Uses:
+
         - `args.enum`: str, Enumeration ID
         - `args.calctype`: str, A calctype ID to specify the calculation type.
         - `args.clex`: str, Cluster expansion ID to specify the calctype. This is the

@@ -57,7 +57,7 @@ def uncompress(
     quiet: bool = False,
     remove_tgz_file: bool = True,
 ):
-    """Uncompress an archive (*.tar.gz or *.tgz) file into its parent directory
+    r"""Uncompress an archive (\*.tar.gz or \*.tgz) file into its parent directory
 
     Parameters
     ----------
