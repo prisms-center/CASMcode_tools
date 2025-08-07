@@ -1275,7 +1275,6 @@ def update_options_to_next_n_atoms(
     options: StructureMappingSearchOptions,
     results_dir: pathlib.Path,
 ):
-
     n_atoms_parent = len(self.parent.atom_type())
     n_atoms_child = len(self.child.atom_type())
     n_atoms_lcm = math.lcm(n_atoms_parent, n_atoms_child)
@@ -2103,7 +2102,7 @@ class StructureMappingSearch:
 
         ## Fixed parameters
         _infinity = 1e20
-        _atom_to_site_cost_f = mapsearch.make_atom_to_site_cost
+        _atom_to_site_cost_future_f = mapsearch.make_atom_to_site_cost_future
 
         ## Create a parent structure search data object.
         parent_search_data = mapsearch.PrimSearchData(
@@ -2189,7 +2188,7 @@ class StructureMappingSearch:
                 k_best=_total_k_best,
                 atom_cost_f=_atom_cost_f,
                 total_cost_f=_total_cost_f,
-                atom_to_site_cost_f=_atom_to_site_cost_f,
+                atom_to_site_cost_future_f=_atom_to_site_cost_future_f,
                 enable_remove_mean_displacement=_enable_remove_mean_displacement,
                 infinity=_infinity,
                 cost_tol=_cost_tol,

@@ -10,7 +10,6 @@ from libcasm.xtal import Prim, Structure
 
 
 def test_example_map_1_bcc_fcc(examples_dir, tmp_path):
-
     # copy examples_dir / "map_1" contents to tmp_path:
     shutil.copytree(examples_dir / "map_1", tmp_path, dirs_exist_ok=True)
 
@@ -62,7 +61,7 @@ def test_example_map_1_bcc_fcc(examples_dir, tmp_path):
         ScoredStructureMapping.from_dict(data=data, prim=parent_xtal_prim)
         for data in data["mappings"]
     ]
-    assert len(mappings) == 30
+    assert len(mappings) == 20
     for mapping in mappings:
         assert isinstance(mapping, ScoredStructureMapping)
 
@@ -76,7 +75,6 @@ def test_example_map_1_bcc_fcc(examples_dir, tmp_path):
 
 
 def test_example_map_1_bcc_hcp(examples_dir, tmp_path):
-
     # copy examples_dir / "map_1" contents to tmp_path:
     shutil.copytree(examples_dir / "map_1", tmp_path, dirs_exist_ok=True)
 
@@ -127,8 +125,7 @@ def test_example_map_1_bcc_hcp(examples_dir, tmp_path):
         ScoredStructureMapping.from_dict(data=data, prim=parent_xtal_prim)
         for data in data["mappings"]
     ]
-    # TODO: Check partition differences between linux and macos
-    assert len(mappings) > 80 and len(mappings) < 90
+    assert len(mappings) == 52
     for mapping in mappings:
         assert isinstance(mapping, ScoredStructureMapping)
 
